@@ -18,6 +18,7 @@ var _reload_elapsed := 0.0
 @onready var _reload_bar: ProgressBar = %ReloadBar
 @onready var _kills_label: Label = %KillsLabel
 @onready var _capture_prompt: Label = %CapturePrompt
+@onready var _controls_hint: Label = $ControlsHint
 @onready var _death_panel: Control = $DeathPanel
 @onready var _death_summary: Label = %DeathSummary
 @onready var _hit_sound: AudioStreamPlayer = $HitSound
@@ -91,6 +92,10 @@ func show_death(kills: int) -> void:
 
 func set_capture_prompt_visible(value: bool) -> void:
 	_capture_prompt.visible = value
+
+
+func set_controls_hint(text: String) -> void:
+	_controls_hint.text = text
 
 
 func is_death_screen_visible() -> bool:

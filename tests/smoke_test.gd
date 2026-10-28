@@ -29,6 +29,7 @@ class Driver:
 		await _test_reload(game)
 		await _test_auto_reload(game)
 		await _test_pause(game)
+		await _test_touch_controls(game)
 		await _test_enemy_attacks(game)
 		await _test_spawner(game)
 		var old_game := game
@@ -147,6 +148,62 @@ class Driver:
 		await physics_frames(2)
 		check(not get_tree().paused and not game.pause_menu.visible, "resume unpauses and hides the menu")
 		pistol._buffered_fire = 0.0
+
+	func _test_touch_controls(game: Node) -> void:
+		var touch: TouchControls = game.touch_controls
+		var player: Player = game.player
+		check(not touch.visible, "touch controls hidden until the first touch")
+		var screen := touch.get_viewport().get_visible_rect().size
+		var stick_start := Vector2(screen.x * 0.15, screen.y * 0.7)
+		_touch(0, stick_start, true)
+		await physics_frames(2)
+		game.spawner.stop() # Gaining control starts spawning; keep this test controlled.
+		check(touch.active and touch.visible, "first touch shows the touch controls")
+		var start := player.global_position
+		var forward := -player.global_basis.z
+		_drag(0, stick_start + Vector2(0, -200), Vector2(0, -200))
+		await physics_frames(20)
+		check(Input.is_action_pressed("sprint"), "pushing the stick to the edge sprints")
+		_touch(0, stick_start + Vector2(0, -200), false)
+		await physics_frames(10)
+		var moved := (player.global_position - start).dot(forward)
+		check(moved > 1.5, "touch stick moves the player forward (%.2f m)" % moved)
+		check(not Input.is_action_pressed("move_forward") and not Input.is_action_pressed("sprint"),
+			"releasing the stick stops moving")
+		var yaw := player.rotation.y
+		var look_start := Vector2(screen.x * 0.6, screen.y * 0.4)
+		_touch(1, look_start, true)
+		_drag(1, look_start + Vector2(120, 0), Vector2(120, 0))
+		_touch(1, look_start + Vector2(120, 0), false)
+		check(not is_equal_approx(player.rotation.y, yaw), "dragging on the right turns the view")
+		var ammo := player.pistol.ammo
+		var fire_center: Vector2 = touch._buttons[&"fire"].center
+		_touch(2, fire_center, true)
+		await physics_frames(3)
+		_touch(2, fire_center, false)
+		check(player.pistol.ammo == ammo - 1, "fire button shoots once")
+		check(Input.mouse_mode != Input.MOUSE_MODE_CAPTURED, "touch mode does not capture the mouse")
+		_touch(3, touch._buttons[&"pause"].center, true)
+		await physics_frames(2)
+		check(get_tree().paused and game.pause_menu.visible, "pause button opens the pause menu")
+		game.resume()
+		await physics_frames(2)
+		check(not get_tree().paused, "game resumes in touch mode")
+		await seconds(player.pistol.stats.seconds_between_shots())
+
+	func _touch(index: int, position: Vector2, pressed: bool) -> void:
+		var event := InputEventScreenTouch.new()
+		event.index = index
+		event.position = position
+		event.pressed = pressed
+		get_viewport().push_input(event, true) # Already in viewport coordinates.
+
+	func _drag(index: int, position: Vector2, relative: Vector2) -> void:
+		var event := InputEventScreenDrag.new()
+		event.index = index
+		event.position = position
+		event.relative = relative
+		get_viewport().push_input(event, true)
 
 	func _test_enemy_attacks(game: Node) -> void:
 		var player: Player = game.player

@@ -31,6 +31,11 @@ The workflow needs two repository secrets: `CLOUDFLARE_API_TOKEN` (with Cloudfla
 | Pause and options | Esc |
 | Restart after death | R or the Restart button |
 
+**Phones and tablets (temporary testing controls):** turn the device sideways and tap the game.
+On-screen controls appear after the first touch. The left thumb drives a floating stick (push to
+the edge to sprint), dragging anywhere else looks around, and the buttons fire, reload (R), jump,
+and pause (II).
+
 Options in the pause menu: mouse sensitivity, field of view, camera recoil, damage numbers, volume.
 
 ## Automated smoke test

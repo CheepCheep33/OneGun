@@ -3,10 +3,11 @@ extends Node3D
 ## Restart reloads the whole scene, so no enemy, effect, or weapon state can survive into the next attempt.
 
 var kills := 0
-## Becomes true once the mouse has actually been captured. Browsers only allow capture after a click,
-## so until then the HUD asks for one instead of treating the free mouse as a pause.
-var _had_capture := false
-## Enemies start spawning on the first capture, so nothing attacks while a browser waits for that click.
+## Becomes true once the player can control the game: the mouse is captured or touch controls are on.
+## Browsers only allow capture after a click, so until then the HUD asks for one instead of
+## treating the free mouse as a pause.
+var _had_control := false
+## Enemies start spawning once the player has control, so nothing attacks while waiting for that click.
 var _combat_started := false
 
 @onready var arena: Node3D = $Arena
@@ -14,6 +15,7 @@ var _combat_started := false
 @onready var spawner: EnemySpawner = $EnemySpawner
 @onready var hud: Hud = $HUD
 @onready var pause_menu: PauseMenu = $PauseMenu
+@onready var touch_controls: TouchControls = $TouchControls
 
 
 func _ready() -> void:
@@ -33,6 +35,9 @@ func _ready() -> void:
 	pause_menu.resume_requested.connect(resume)
 	pause_menu.restart_requested.connect(restart)
 	pause_menu.quit_requested.connect(get_tree().quit)
+	touch_controls.setup(player)
+	touch_controls.activated.connect(_on_touch_activated)
+	touch_controls.pause_requested.connect(pause)
 
 	hud.set_health(player.health, player.max_health)
 	hud.set_ammo(player.pistol.ammo, player.pistol.stats.magazine_size)
@@ -48,20 +53,20 @@ func _unhandled_input(event: InputEvent) -> void:
 		restart()
 		get_viewport().set_input_as_handled()
 	elif event is InputEventMouseButton and event.pressed and not player.is_dead \
-			and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+			and not touch_controls.active and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		_capture_mouse()
 		get_viewport().set_input_as_handled()
 
 
 func _process(_delta: float) -> void:
-	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-	_had_capture = _had_capture or captured
-	if captured and not _combat_started:
+	var has_control := touch_controls.active or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	_had_control = _had_control or has_control
+	if has_control and not _combat_started:
 		_combat_started = true
 		spawner.start()
-	hud.set_capture_prompt_visible(not captured and not _had_capture and not player.is_dead)
+	hud.set_capture_prompt_visible(not has_control and not _had_control and not player.is_dead)
 	# Browsers release the mouse on Esc without sending the key to the game; treat any lost capture as a pause.
-	if _had_capture and not captured and not player.is_dead:
+	if _had_control and not has_control and not player.is_dead:
 		pause()
 
 
@@ -74,6 +79,7 @@ func _notification(what: int) -> void:
 
 func pause() -> void:
 	get_tree().paused = true
+	touch_controls.release_all()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	pause_menu.open()
 
@@ -82,8 +88,9 @@ func resume() -> void:
 	pause_menu.close()
 	Settings.save_settings()
 	get_tree().paused = false
-	_had_capture = false # Wait for the capture to actually take effect before watching for its loss again.
-	_capture_mouse()
+	if not touch_controls.active:
+		_had_control = false # Wait for the capture to take effect before watching for its loss again.
+		_capture_mouse()
 
 
 func restart() -> void:
@@ -99,8 +106,16 @@ func _on_enemy_killed(_enemy: Chaser) -> void:
 
 func _on_player_died() -> void:
 	spawner.stop()
+	touch_controls.set_enabled(false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	hud.show_death(kills)
+
+
+func _on_touch_activated() -> void:
+	# Touch screens have no mouse to capture; taps also arrive as emulated clicks, which must not fire.
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	player.set_mouse_input_enabled(false)
+	hud.set_controls_hint("Left thumb: move (push to edge to sprint)   Drag right side: look")
 
 
 func _capture_mouse() -> void:

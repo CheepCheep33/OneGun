@@ -28,6 +28,7 @@ var is_dead := false
 var _pitch := 0.0
 var _recoil_pitch := 0.0
 var _capture_settle_left := 0.0
+var _mouse_input_enabled := true
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 @onready var head: Node3D = $Head
@@ -45,13 +46,20 @@ func _ready() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if is_dead or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	if is_dead or not _mouse_input_enabled or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
 	if event is InputEventMouseMotion and _capture_settle_left <= 0.0:
-		var radians_per_pixel := MOUSE_RADIANS_PER_PIXEL * Settings.mouse_sensitivity
-		rotate_y(-event.relative.x * radians_per_pixel)
-		_pitch = clampf(_pitch - event.relative.y * radians_per_pixel, -MAX_PITCH, MAX_PITCH)
-		_apply_pitch()
+		look(event.relative)
+
+
+## Turns the view by a screen-space movement in pixels, scaled by the sensitivity setting.
+func look(relative: Vector2) -> void:
+	if is_dead:
+		return
+	var radians_per_pixel := MOUSE_RADIANS_PER_PIXEL * Settings.mouse_sensitivity
+	rotate_y(-relative.x * radians_per_pixel)
+	_pitch = clampf(_pitch - relative.y * radians_per_pixel, -MAX_PITCH, MAX_PITCH)
+	_apply_pitch()
 
 
 func _process(delta: float) -> void:
@@ -78,6 +86,13 @@ func _physics_process(delta: float) -> void:
 	velocity.x = horizontal.x
 	velocity.z = horizontal.y
 	move_and_slide()
+
+
+## Turned off in touch mode so taps and drags, which browsers also report as mouse input, don't
+## shoot or turn the view a second time.
+func set_mouse_input_enabled(value: bool) -> void:
+	_mouse_input_enabled = value
+	pistol.mouse_input_enabled = value
 
 
 func take_damage(amount: float) -> void:

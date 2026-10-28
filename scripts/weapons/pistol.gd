@@ -26,6 +26,8 @@ var ammo := 0
 var is_reloading := false
 ## Cleared while the player is dead so the gun ignores input.
 var enabled := true
+## Cleared in touch mode: browsers also report each tap as a mouse click, which must not fire.
+var mouse_input_enabled := true
 
 var _camera: Camera3D
 var _shooter_rid: RID
@@ -60,7 +62,7 @@ func setup(camera: Camera3D, shooter_rid: RID) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+	if not mouse_input_enabled or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return # The click that recaptures the mouse should not also fire.
 	if event.is_action_pressed("fire"):
 		request_fire()

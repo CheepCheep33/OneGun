@@ -142,7 +142,7 @@ offset_bottom = -60.0
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 8
 theme_override_font_sizes/font_size = 30
-text = "Click to play"
+text = "Click or tap to play"
 horizontal_alignment = 1
 
 [node name="DeathPanel" type="ColorRect" parent="."]

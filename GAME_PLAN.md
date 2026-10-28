@@ -33,6 +33,11 @@ upgrades until the pistol is absurdly strong. Built in Godot 4.3 (GDScript).
   other branches get preview URLs. Workflow: `.github/workflows/web.yml`.
 - **Mouse capture:** browsers only lock the mouse after a click, so the game shows "Click to play"
   and enemies start spawning on the first capture. Losing capture (Esc in a browser, alt-tab) pauses.
+- **Temporary touch controls** (`scenes/ui/touch_controls.tscn`) for testing the browser build on
+  phones. They appear on the first touch and turn off mouse input, since browsers also report taps
+  as clicks. They are a testing aid, not the final mobile design.
+- **UI scaling:** the window uses `canvas_items` stretch with `expand`, so the HUD keeps its size
+  relative to the screen on high-DPI phones and large monitors.
 - **Restart = reload the main scene.** No enemy, effect, or weapon state can leak into the next attempt.
   Persistent data (settings now, progression in Milestone 2) lives outside the scene.
 - **Weapon stats are derived, never mutated.** `WeaponBaseStats` (data/weapons/pistol_base.tres) holds
@@ -66,6 +71,8 @@ upgrades until the pistol is absurdly strong. Built in Godot 4.3 (GDScript).
 - The browser build was checked in headless Chromium (software WebGL): it loads, renders, captures
   the mouse on click and fires. Real browsers and the Cloudflare deploy are unverified until the
   first workflow run.
+- Touch controls were checked in phone-emulated Chromium (844x390, touch): stick, look, fire, and
+  pause work. Not yet tried on a real phone.
 - The gun model can clip into walls when standing right against them.
 - Placeholder sounds are synthesized and rough.
 - Low walls are 1.5 m high and cannot be jumped onto, by design, so enemies can always reach the player.

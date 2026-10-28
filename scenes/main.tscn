@@ -8,6 +8,7 @@
 [ext_resource type="Resource" path="res://data/enemies/chaser.tres" id="6_chaser_def"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="7_hud"]
 [ext_resource type="PackedScene" path="res://scenes/ui/pause_menu.tscn" id="8_pause"]
+[ext_resource type="PackedScene" path="res://scenes/ui/touch_controls.tscn" id="9_touch"]
 
 [sub_resource type="ProceduralSkyMaterial" id="SkyMaterial"]
 sky_top_color = Color(0.32, 0.45, 0.62, 1)
@@ -48,5 +49,7 @@ enemy_definition = ExtResource("6_chaser_def")
 container_path = NodePath("../Enemies")
 
 [node name="HUD" parent="." instance=ExtResource("7_hud")]
+
+[node name="TouchControls" parent="." instance=ExtResource("9_touch")]
 
 [node name="PauseMenu" parent="." instance=ExtResource("8_pause")]
