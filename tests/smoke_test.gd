@@ -176,6 +176,19 @@ class Driver:
 		_drag(1, look_start + Vector2(120, 0), Vector2(120, 0))
 		_touch(1, look_start + Vector2(120, 0), false)
 		check(not is_equal_approx(player.rotation.y, yaw), "dragging on the right turns the view")
+		# Move and look at once. Godot's web build can send `relative` measured from the other finger,
+		# so give the look drag a bogus relative and check the turn follows the finger's real movement.
+		_touch(0, stick_start, true)
+		_drag(0, stick_start + Vector2(0, -60), Vector2(0, -60))
+		_touch(1, look_start, true)
+		yaw = player.rotation.y
+		_drag(1, look_start + Vector2(10, 0), Vector2(900, 400))
+		var turned := absf(angle_difference(yaw, player.rotation.y))
+		var expected := 10.0 * TouchControls.LOOK_SCALE / touch._scale * Player.MOUSE_RADIANS_PER_PIXEL * Settings.mouse_sensitivity
+		check(is_equal_approx(turned, expected), "two-finger look uses each finger's own movement (%.4f rad)" % turned)
+		_touch(1, look_start + Vector2(10, 0), false)
+		_touch(0, stick_start + Vector2(0, -60), false)
+		await physics_frames(2)
 		var ammo := player.pistol.ammo
 		var fire_center: Vector2 = touch._buttons[&"fire"].center
 		_touch(2, fire_center, true)

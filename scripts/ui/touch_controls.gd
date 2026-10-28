@@ -22,6 +22,10 @@ var enabled := true
 
 var _player: Player
 var _touches := {} # finger index -> role: &"move", &"look", or a button name
+## Last position of each finger. Look deltas are computed from this rather than the event's
+## `relative`: Godot 4.3's web build pairs touches by list order instead of finger, so with two
+## fingers down `relative` can be measured from the other finger and the view jumps.
+var _last_positions := {}
 var _stick_center := Vector2.ZERO
 var _stick_vector := Vector2.ZERO
 var _stick_radius := STICK_RADIUS
@@ -55,6 +59,7 @@ func release_all() -> void:
 		if role == &"jump":
 			Input.action_release("jump")
 	_touches.clear()
+	_last_positions.clear()
 	_set_stick(Vector2.ZERO)
 	_canvas.queue_redraw()
 
@@ -66,7 +71,7 @@ func _input(event: InputEvent) -> void:
 		else:
 			_on_touch_up(event.index)
 	elif event is InputEventScreenDrag:
-		_on_drag(event.index, event.position, event.relative)
+		_on_drag(event.index, event.position)
 
 
 func _on_touch_down(index: int, position: Vector2) -> void:
@@ -76,6 +81,7 @@ func _on_touch_down(index: int, position: Vector2) -> void:
 		activated.emit()
 	if not enabled:
 		return
+	_last_positions[index] = position
 	for button: StringName in _buttons:
 		var data: Dictionary = _buttons[button]
 		if position.distance_to(data.center) <= data.radius * BUTTON_HIT_SLOP:
@@ -96,6 +102,7 @@ func _on_touch_down(index: int, position: Vector2) -> void:
 func _on_touch_up(index: int) -> void:
 	var role: StringName = _touches.get(index, &"")
 	_touches.erase(index)
+	_last_positions.erase(index)
 	if role == &"move":
 		_set_stick(Vector2.ZERO)
 	elif role == &"jump":
@@ -103,9 +110,11 @@ func _on_touch_up(index: int) -> void:
 	_canvas.queue_redraw()
 
 
-func _on_drag(index: int, position: Vector2, relative: Vector2) -> void:
+func _on_drag(index: int, position: Vector2) -> void:
 	if not enabled or _player == null:
 		return
+	var relative: Vector2 = position - _last_positions.get(index, position)
+	_last_positions[index] = position
 	match _touches.get(index, &""):
 		&"move":
 			_set_stick((position - _stick_center).limit_length(_stick_radius) / _stick_radius)
