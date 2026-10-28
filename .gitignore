@@ -1,0 +1,6 @@
+# Godot 4 generated data
+.godot/
+/android/
+# Export output
+/build/
+*.tmp
