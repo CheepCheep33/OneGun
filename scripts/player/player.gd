@@ -9,6 +9,9 @@ signal died
 ## Radians of rotation per pixel of mouse movement at sensitivity 1.0.
 const MOUSE_RADIANS_PER_PIXEL := 0.0022
 const MAX_PITCH := deg_to_rad(89.0)
+## Mouse motion is ignored this long after the mouse is captured. Browsers can report one huge jump
+## when pointer lock engages, which would otherwise snap the view.
+const CAPTURE_SETTLE_TIME := 0.1
 
 @export var walk_speed := 6.0
 @export var sprint_speed := 9.0
@@ -24,6 +27,7 @@ var is_dead := false
 
 var _pitch := 0.0
 var _recoil_pitch := 0.0
+var _capture_settle_left := 0.0
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 @onready var head: Node3D = $Head
@@ -43,7 +47,7 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if is_dead or Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		return
-	if event is InputEventMouseMotion:
+	if event is InputEventMouseMotion and _capture_settle_left <= 0.0:
 		var radians_per_pixel := MOUSE_RADIANS_PER_PIXEL * Settings.mouse_sensitivity
 		rotate_y(-event.relative.x * radians_per_pixel)
 		_pitch = clampf(_pitch - event.relative.y * radians_per_pixel, -MAX_PITCH, MAX_PITCH)
@@ -51,6 +55,10 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		_capture_settle_left = maxf(_capture_settle_left - delta, 0.0)
+	else:
+		_capture_settle_left = CAPTURE_SETTLE_TIME
 	_recoil_pitch = lerpf(_recoil_pitch, 0.0, 1.0 - exp(-recoil_recovery * delta))
 	_apply_pitch()
 

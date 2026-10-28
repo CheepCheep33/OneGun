@@ -10,6 +10,15 @@ milestone status and design decisions.
 2. Open Godot, click **Import**, and select this folder's `project.godot`.
 3. The first import takes a few seconds. Press **F5** (or the Play button) to run.
 
+### In a browser
+
+Every push deploys a web build to Cloudflare Pages (`.github/workflows/web.yml`). `main` goes to the
+production URL and other branches get a preview URL, shown in the workflow log and in the Cloudflare
+dashboard under Workers & Pages → onegun. Click the game once to lock the mouse.
+
+The workflow needs two repository secrets: `CLOUDFLARE_API_TOKEN` (with Cloudflare Pages: Edit) and
+`CLOUDFLARE_ACCOUNT_ID`.
+
 ## Controls
 
 | Action | Input |

@@ -3,6 +3,11 @@ extends Node3D
 ## Restart reloads the whole scene, so no enemy, effect, or weapon state can survive into the next attempt.
 
 var kills := 0
+## Becomes true once the mouse has actually been captured. Browsers only allow capture after a click,
+## so until then the HUD asks for one instead of treating the free mouse as a pause.
+var _had_capture := false
+## Enemies start spawning on the first capture, so nothing attacks while a browser waits for that click.
+var _combat_started := false
 
 @onready var arena: Node3D = $Arena
 @onready var player: Player = $Player
@@ -22,6 +27,7 @@ func _ready() -> void:
 	player.pistol.reload_started.connect(hud.show_reload)
 	player.pistol.reload_finished.connect(hud.hide_reload)
 	player.pistol.hit_landed.connect(hud.show_hit_marker)
+	spawner.setup(player, arena)
 	spawner.enemy_killed.connect(_on_enemy_killed)
 	hud.restart_requested.connect(restart)
 	pause_menu.resume_requested.connect(resume)
@@ -32,7 +38,6 @@ func _ready() -> void:
 	hud.set_ammo(player.pistol.ammo, player.pistol.stats.magazine_size)
 	hud.set_kills(kills)
 	_capture_mouse()
-	spawner.start(player, arena)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -46,6 +51,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		_capture_mouse()
 		get_viewport().set_input_as_handled()
+
+
+func _process(_delta: float) -> void:
+	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	_had_capture = _had_capture or captured
+	if captured and not _combat_started:
+		_combat_started = true
+		spawner.start()
+	hud.set_capture_prompt_visible(not captured and not _had_capture and not player.is_dead)
+	# Browsers release the mouse on Esc without sending the key to the game; treat any lost capture as a pause.
+	if _had_capture and not captured and not player.is_dead:
+		pause()
 
 
 func _notification(what: int) -> void:
@@ -65,6 +82,7 @@ func resume() -> void:
 	pause_menu.close()
 	Settings.save_settings()
 	get_tree().paused = false
+	_had_capture = false # Wait for the capture to actually take effect before watching for its loss again.
 	_capture_mouse()
 
 

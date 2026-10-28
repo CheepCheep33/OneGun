@@ -24,9 +24,12 @@ var _timer := 0.0
 @onready var _container: Node3D = get_node(container_path)
 
 
-func start(player: Player, arena: Node) -> void:
+func setup(player: Player, arena: Node) -> void:
 	_player = player
 	_arena = arena
+
+
+func start() -> void:
 	_running = true
 	_timer = first_spawn_delay
 

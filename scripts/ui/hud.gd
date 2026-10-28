@@ -17,6 +17,7 @@ var _reload_elapsed := 0.0
 @onready var _ammo_label: Label = %AmmoLabel
 @onready var _reload_bar: ProgressBar = %ReloadBar
 @onready var _kills_label: Label = %KillsLabel
+@onready var _capture_prompt: Label = %CapturePrompt
 @onready var _death_panel: Control = $DeathPanel
 @onready var _death_summary: Label = %DeathSummary
 @onready var _hit_sound: AudioStreamPlayer = $HitSound
@@ -86,6 +87,10 @@ func show_death(kills: int) -> void:
 	_death_summary.text = "Chasers destroyed: %d" % kills
 	_death_panel.visible = true
 	%RestartButton.grab_focus()
+
+
+func set_capture_prompt_visible(value: bool) -> void:
+	_capture_prompt.visible = value
 
 
 func is_death_screen_visible() -> bool:

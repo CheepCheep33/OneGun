@@ -127,6 +127,24 @@ theme_override_constants/outline_size = 4
 theme_override_font_sizes/font_size = 15
 text = "WASD move   Shift sprint   Space jump   LMB shoot   R reload   Esc pause"
 
+[node name="CapturePrompt" type="Label" parent="."]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -110.0
+offset_right = 300.0
+offset_bottom = -60.0
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 8
+theme_override_font_sizes/font_size = 30
+text = "Click to play"
+horizontal_alignment = 1
+
 [node name="DeathPanel" type="ColorRect" parent="."]
 visible = false
 anchors_preset = 15

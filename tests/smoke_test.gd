@@ -165,7 +165,7 @@ class Driver:
 		var spawner: EnemySpawner = game.spawner
 		spawner.max_active = 3
 		spawner.spawn_interval = 0.05
-		spawner.start(game.player, game.arena)
+		spawner.start()
 		spawner._timer = 0.0
 		await seconds(0.6)
 		spawner.stop()

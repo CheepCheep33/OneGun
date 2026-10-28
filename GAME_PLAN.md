@@ -26,6 +26,13 @@ upgrades until the pistol is absurdly strong. Built in Godot 4.3 (GDScript).
 ## Decisions
 
 - **Engine:** Godot 4 with GDScript. Developed and checked against Godot 4.3 stable.
+- **Renderer:** Compatibility (OpenGL / WebGL 2), because the browser build requires it. Desktop uses
+  the same renderer, so both builds look the same.
+- **Browser build:** every push runs the smoke test, exports the Web preset (no threads, so no special
+  server headers), and deploys to the Cloudflare Pages project `onegun`. `main` is production;
+  other branches get preview URLs. Workflow: `.github/workflows/web.yml`.
+- **Mouse capture:** browsers only lock the mouse after a click, so the game shows "Click to play"
+  and enemies start spawning on the first capture. Losing capture (Esc in a browser, alt-tab) pauses.
 - **Restart = reload the main scene.** No enemy, effect, or weapon state can leak into the next attempt.
   Persistent data (settings now, progression in Milestone 2) lives outside the scene.
 - **Weapon stats are derived, never mutated.** `WeaponBaseStats` (data/weapons/pistol_base.tres) holds
@@ -56,6 +63,9 @@ upgrades until the pistol is absurdly strong. Built in Godot 4.3 (GDScript).
 - Not yet played by a person. Automated checks cover logic, and screenshots from a software renderer
   confirmed the scene, HUD, muzzle flash, pause menu and death screen draw. Feel (recoil, sound,
   movement) is unverified.
+- The browser build was checked in headless Chromium (software WebGL): it loads, renders, captures
+  the mouse on click and fires. Real browsers and the Cloudflare deploy are unverified until the
+  first workflow run.
 - The gun model can clip into walls when standing right against them.
 - Placeholder sounds are synthesized and rough.
 - Low walls are 1.5 m high and cannot be jumped onto, by design, so enemies can always reach the player.
