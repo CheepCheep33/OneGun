@@ -56,8 +56,14 @@ jobs:
       - name: Export web build
         run: |
           mkdir -p build/web
+          touch build/.gdignore # keep Godot from importing the export output
           ~/godot/godot --headless --path . --export-release "Web" build/web/index.html
           test -f build/web/index.pck
+          # Pages caps files at 25 MiB; ship the engine gzipped and decompress it in the browser.
+          cp web/wasm_gzip_loader.js build/web/
+          gzip -9 -c build/web/index.wasm > build/web/index.wasm.gz.bin
+          rm build/web/index.wasm
+          ls -la build/web
 
       - name: Deploy to Cloudflare Pages
         env:
