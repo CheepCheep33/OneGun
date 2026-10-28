@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="WeaponBaseStats" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/weapon_base_stats.gd" id="1_stats"]
+
+[resource]
+script = ExtResource("1_stats")
+damage = 10.0
+fire_rate = 4.0
+magazine_size = 10
+reload_time = 1.4
+max_range = 150.0
+recoil_kick_degrees = 1.2
+max_fire_rate = 15.0
+min_reload_time = 0.3
