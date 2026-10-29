@@ -4,6 +4,7 @@
 
 [resource]
 script = ExtResource("1_def")
+id = &"chaser"
 display_name = "Chaser"
 max_health = 40.0
 move_speed = 3.6

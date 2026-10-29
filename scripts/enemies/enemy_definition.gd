@@ -1,10 +1,12 @@
 class_name EnemyDefinition
 extends Resource
-## Tunable stats for one enemy type. Tuning values, not final balance.
+## Tunable stats for one enemy type (data/enemies/). Tuning values, not final balance.
 
+@export var id: StringName = &"chaser"
 @export var display_name := "Enemy"
 @export var max_health := 40.0
 @export var move_speed := 3.6
+## Damage of the melee strike, the bolt or the zap, before any boss special attack.
 @export var attack_damage := 12.0
 ## Horizontal distance at which the enemy stops and starts its attack.
 @export var attack_range := 1.7
@@ -15,3 +17,25 @@ extends Resource
 @export var credit_reward := 5
 ## Death burst and hit-flash tint, so enemy types stay readable.
 @export var color := Color(0.85, 0.25, 0.2)
+
+@export_group("Role")
+## Share of the wave's alive cap this enemy takes (drones count as half).
+@export var counts_as := 1.0
+## Scales the per-kill drop chances (fragile swarm enemies drop less each).
+@export var loot_weight := 1.0
+## Bosses get a HUD health bar, drop guaranteed loot straight into the inventory and double the wave bonus.
+@export var is_boss := false
+
+@export_group("Movement")
+## Flying enemies ignore gravity and hover; their hitbox sits at hover_height.
+@export var flying := false
+@export var hover_height := 0.0
+
+@export_group("Ranged")
+## Ranged enemies keep their distance and fire simulated bolts.
+@export var ranged := false
+@export var preferred_range := 11.0
+## Closer than this they back away while facing the player.
+@export var retreat_range := 6.0
+@export var projectile_speed := 16.0
+@export var projectile_lifetime := 4.0

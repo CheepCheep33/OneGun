@@ -22,7 +22,8 @@ func _ready() -> void:
 	_add_toggle("Damage numbers", &"show_damage_numbers")
 
 
-func open() -> void:
+func open(leave_text := "Abandon wave") -> void:
+	%AbandonButton.text = leave_text
 	visible = true
 	%ResumeButton.grab_focus()
 

@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="EnemyDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/enemy_definition.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = &"shooter"
+display_name = "Shooter"
+max_health = 30.0
+move_speed = 3.2
+attack_damage = 10.0
+attack_range = 11.0
+attack_windup = 0.7
+attack_cooldown = 2.2
+credit_reward = 6
+color = Color(0.95, 0.5, 0.2, 1)
+ranged = true
+preferred_range = 11.0
+retreat_range = 6.0
+projectile_speed = 16.0
+projectile_lifetime = 4.0

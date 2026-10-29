@@ -53,6 +53,9 @@ jobs:
       - name: Smoke test
         run: ~/godot/godot --headless --path . res://tests/smoke_test.tscn
 
+      - name: Reforge simulation (plan gate)
+        run: ~/godot/godot --headless --path . res://tests/reforge_sim.tscn
+
       - name: Export web build
         run: |
           mkdir -p build/web

@@ -12,6 +12,10 @@ extends Resource
 ## Lowest and highest value per rarity, indexed by Items.Rarity (Common has no affixes but keeps a row).
 @export var min_by_rarity: Array[float] = [0.0, 0.04, 0.06, 0.08, 0.10]
 @export var max_by_rarity: Array[float] = [0.0, 0.08, 0.12, 0.16, 0.20]
+## False keeps the affix out of the drop pool until the system it modifies exists (status
+## duration before statuses, weak-point damage before weak points). Items that already carry it
+## still load and still apply.
+@export var drops := true
 
 
 func value_for(rarity: int, roll: float) -> float:

@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="AttachmentDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/attachment_definition.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/weapons/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_1"]
+script = ExtResource("2_mod")
+stat = &"damage"
+flat = 0.0
+percent = 0.15
+
+[sub_resource type="Resource" id="Mod_2"]
+script = ExtResource("2_mod")
+stat = &"fire_rate"
+flat = 0.0
+percent = -0.12
+
+[resource]
+script = ExtResource("1_def")
+id = &"burst"
+display_name = "Burst"
+slot = &"receiver"
+description = "Three rounds per pull that each hit harder, at a slower sustained rate. No single shots."
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1"), SubResource("Mod_2")])
+mark_scale = 0.15
+behaviours = {"fire_mode": "burst", "burst_size": 3}
+is_default = false
+unlock_wave = 10
+gate_text = "Opens after wave 10 (the Foundry, in a later milestone)"
+visual = {"slide_color": Color(0.12, 0.2, 0.36, 1)}

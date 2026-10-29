@@ -1,12 +1,14 @@
 class_name Hud
 extends CanvasLayer
 ## In-combat HUD: crosshair and hit markers, health, ammo, reload progress, kills, credits, wave
-## progress, the wave-cleared banner and the death screen.
+## progress, the boss bar, loot pickup notes, the wave-cleared banner and the death screen.
 
 ## The death screen's button: go back to the bench.
 signal bench_requested
 
 const LOW_AMMO_FRACTION := 0.3
+const PICKUP_NOTE_TIME := 3.2
+const MAX_PICKUP_NOTES := 4
 
 var _vignette_alpha := 0.0
 var _reload_total := 0.0
@@ -25,6 +27,10 @@ var _banner_tween: Tween
 @onready var _credit_gain_label: Label = %CreditGainLabel
 @onready var _wave_label: Label = %WaveLabel
 @onready var _wave_progress_label: Label = %WaveProgressLabel
+@onready var _boss_box: Control = %BossBox
+@onready var _boss_name: Label = %BossName
+@onready var _boss_bar: ProgressBar = %BossBar
+@onready var _pickup_notes: VBoxContainer = %PickupNotes
 @onready var _banner: Control = %ClearedBanner
 @onready var _banner_title: Label = %ClearedTitle
 @onready var _banner_detail: Label = %ClearedDetail
@@ -35,12 +41,14 @@ var _banner_tween: Tween
 @onready var _death_summary: Label = %DeathSummary
 @onready var _hit_sound: AudioStreamPlayer = $HitSound
 @onready var _kill_sound: AudioStreamPlayer = $KillSound
+@onready var _pickup_sound: AudioStreamPlayer = $PickupSound
 
 
 func _ready() -> void:
 	_death_panel.visible = false
 	_reload_bar.visible = false
 	_banner.visible = false
+	_boss_box.visible = false
 	_credit_gain_label.modulate.a = 0.0
 	%BenchButton.pressed.connect(func() -> void: bench_requested.emit())
 
@@ -115,8 +123,18 @@ func set_wave(number: int, display_name: String) -> void:
 	_wave_label.text = "WAVE %d  ·  %s" % [number, display_name.to_upper()]
 
 
+## Free-form title and progress line, for side areas.
+func set_wave_text(title: String, progress: String) -> void:
+	_wave_label.text = title
+	_wave_progress_label.text = progress
+
+
 func set_wave_progress(remaining: int, total: int) -> void:
 	_wave_progress_label.text = "%d / %d left" % [remaining, total]
+
+
+func set_wave_progress_text(text: String) -> void:
+	_wave_progress_label.text = text
 
 
 ## Hides the combat readouts while the bench is open so it is not drawn under the panels.
@@ -126,11 +144,72 @@ func set_combat_visible(value: bool) -> void:
 	if not value:
 		_banner.visible = false
 		_reload_bar.visible = false
+		for note in _pickup_notes.get_children():
+			note.queue_free()
 
 
-func show_wave_cleared(number: int, bonus: int, first_clear: bool) -> void:
+# ------------------------------------------------------------------ boss bar
+
+func show_boss(name: String, current: float, maximum: float) -> void:
+	_boss_name.text = name.to_upper()
+	_boss_box.visible = true
+	set_boss_health(current, maximum)
+
+
+func set_boss_health(current: float, maximum: float) -> void:
+	_boss_bar.max_value = maxf(maximum, 1.0)
+	_boss_bar.value = clampf(current, 0.0, maximum)
+
+
+func hide_boss() -> void:
+	_boss_box.visible = false
+
+
+func is_boss_bar_visible() -> bool:
+	return _boss_box.visible
+
+
+# ------------------------------------------------------------------ loot notes
+
+## One line per item that arrived, coloured by rarity, fading after a few seconds.
+func show_pickup(item: Dictionary, destination: String) -> void:
+	var text := "%s  ·  %s" % [Items.display_name(item), Items.rarity_name(item)]
+	match destination:
+		"overflow":
+			text += "  →  overflow tray"
+		"dismantled":
+			text += "  →  inventory full, turned to parts"
+		"bumped":
+			text += "  →  tray (a lesser item became parts)"
+	var note := Label.new()
+	note.text = text
+	note.add_theme_font_size_override("font_size", 18)
+	note.add_theme_color_override("font_outline_color", Color.BLACK)
+	note.add_theme_constant_override("outline_size", 6)
+	note.add_theme_color_override("font_color", Items.rarity_color(item))
+	_pickup_notes.add_child(note)
+	while _pickup_notes.get_child_count() > MAX_PICKUP_NOTES:
+		var oldest := _pickup_notes.get_child(0)
+		_pickup_notes.remove_child(oldest)
+		oldest.queue_free()
+	_pickup_sound.play()
+	var tween := note.create_tween()
+	tween.tween_property(note, "modulate:a", 0.0, 0.5).set_delay(PICKUP_NOTE_TIME)
+	tween.tween_callback(note.queue_free)
+
+
+func pickup_note_count() -> int:
+	return _pickup_notes.get_child_count()
+
+
+# ------------------------------------------------------------------ banners
+
+func show_wave_cleared(number: int, bonus: int, first_clear: bool, granted: Dictionary = {}) -> void:
 	_banner_title.text = "WAVE %d CLEARED" % number
-	_banner_detail.text = "+%d credits%s" % [bonus, "" if first_clear else "  (replay)"]
+	var detail := "+%d credits%s" % [bonus, "" if first_clear else "  (replay)"]
+	if not granted.is_empty():
+		detail += "\n+ %s  ·  %s" % [Items.display_name(granted), Items.rarity_name(granted)]
+	_banner_detail.text = detail
 	_banner.visible = true
 	_banner.modulate.a = 0.0
 	if _banner_tween:

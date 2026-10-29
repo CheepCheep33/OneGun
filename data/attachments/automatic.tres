@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="AttachmentDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/attachment_definition.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/weapons/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_1"]
+script = ExtResource("2_mod")
+stat = &"damage"
+flat = 0.0
+percent = -0.08
+
+[sub_resource type="Resource" id="Mod_2"]
+script = ExtResource("2_mod")
+stat = &"recoil"
+flat = 0.0
+percent = 0.25
+
+[resource]
+script = ExtResource("1_def")
+id = &"automatic"
+display_name = "Automatic"
+slot = &"receiver"
+description = "Hold the trigger to keep firing. Rounds hit a little softer and the gun climbs more."
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1"), SubResource("Mod_2")])
+mark_scale = 0.15
+behaviours = {"fire_mode": "auto"}
+is_default = false
+unlock_wave = 5
+gate_text = "Opens when the Warden falls (wave 5)"
+visual = {"slide_color": Color(0.35, 0.18, 0.12, 1)}

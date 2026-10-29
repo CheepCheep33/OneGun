@@ -4,6 +4,7 @@
 
 [resource]
 script = ExtResource("1_def")
+id = &"runner"
 display_name = "Runner"
 max_health = 20.0
 move_speed = 5.2

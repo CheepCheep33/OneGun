@@ -14,6 +14,9 @@ bg_color = Color(0.35, 0.85, 0.45, 1)
 [sub_resource type="StyleBoxFlat" id="Style_reload_fill"]
 bg_color = Color(1, 0.8, 0.35, 1)
 
+[sub_resource type="StyleBoxFlat" id="Style_boss_fill"]
+bg_color = Color(0.9, 0.25, 0.2, 1)
+
 [node name="HUD" type="CanvasLayer"]
 script = ExtResource("1_hud")
 
@@ -229,6 +232,53 @@ theme_override_font_sizes/font_size = 18
 text = "5 / 5 left"
 horizontal_alignment = 1
 
+[node name="BossBox" type="VBoxContainer" parent="Combat"]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -270.0
+offset_top = 82.0
+offset_right = 270.0
+offset_bottom = 130.0
+grow_horizontal = 2
+mouse_filter = 2
+theme_override_constants/separation = 2
+
+[node name="BossName" type="Label" parent="Combat/BossBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.6, 0.55, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 20
+text = "WARDEN"
+horizontal_alignment = 1
+
+[node name="BossBar" type="ProgressBar" parent="Combat/BossBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(540, 14)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/background = SubResource("Style_bar_bg")
+theme_override_styles/fill = SubResource("Style_boss_fill")
+value = 100.0
+show_percentage = false
+
+[node name="PickupNotes" type="VBoxContainer" parent="Combat"]
+unique_name_in_owner = true
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 28.0
+offset_top = -20.0
+offset_right = 520.0
+offset_bottom = 100.0
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 2
+
 [node name="ClearedBanner" type="VBoxContainer" parent="Combat"]
 unique_name_in_owner = true
 visible = false
@@ -326,3 +376,8 @@ max_polyphony = 3
 [node name="KillSound" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("4_kill")
 volume_db = -6.0
+
+[node name="PickupSound" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("3_hit")
+volume_db = -4.0
+pitch_scale = 1.6

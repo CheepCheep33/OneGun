@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="AttachmentDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/attachment_definition.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/weapons/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_1"]
+script = ExtResource("2_mod")
+stat = &"damage"
+flat = 0.0
+percent = -0.10
+
+[resource]
+script = ExtResource("1_def")
+id = &"penetrator_barrel"
+display_name = "Penetrator barrel"
+slot = &"barrel"
+description = "Rounds pass through two enemies, each one behind taking a quarter less. Softer hits."
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1")])
+mark_scale = 0.15
+behaviours = {"pierce": 2}
+is_default = false
+unlock_wave = 0
+gate_text = ""
+visual = {"slide_length": 1.3, "barrel_extension": true}

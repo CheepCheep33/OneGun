@@ -33,6 +33,12 @@ size = Vector3(0.045, 0.12, 0.065)
 material = SubResource("Mat_accent")
 size = Vector3(0.012, 0.015, 0.02)
 
+[sub_resource type="CylinderMesh" id="Mesh_extension"]
+material = SubResource("Mat_metal")
+top_radius = 0.02
+bottom_radius = 0.024
+height = 0.08
+
 [sub_resource type="SphereMesh" id="Mesh_flash"]
 material = SubResource("Mat_flash")
 radius = 0.045
@@ -59,6 +65,12 @@ mesh = SubResource("Mesh_grip")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.04, -0.115)
 cast_shadow = 0
 mesh = SubResource("Mesh_sight")
+
+[node name="BarrelExtension" type="MeshInstance3D" parent="Model"]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0.01, -0.19)
+visible = false
+cast_shadow = 0
+mesh = SubResource("Mesh_extension")
 
 [node name="Muzzle" type="Marker3D" parent="Model"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, -0.16)

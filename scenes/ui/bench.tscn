@@ -14,6 +14,18 @@ corner_radius_top_right = 6
 corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
 
+[sub_resource type="StyleBoxFlat" id="Style_detail"]
+bg_color = Color(0.06, 0.07, 0.09, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.25, 0.28, 0.34, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
 [node name="Bench" type="CanvasLayer"]
 process_mode = 3
 layer = 5
@@ -26,7 +38,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.02, 0.03, 0.05, 0.8)
+color = Color(0.02, 0.03, 0.05, 0.84)
 
 [node name="Margin" type="MarginContainer" parent="."]
 anchors_preset = 15
@@ -34,14 +46,14 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/margin_left = 32
-theme_override_constants/margin_top = 20
-theme_override_constants/margin_right = 32
-theme_override_constants/margin_bottom = 20
+theme_override_constants/margin_left = 22
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 22
+theme_override_constants/margin_bottom = 10
 
 [node name="VBox" type="VBoxContainer" parent="Margin"]
 layout_mode = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 6
 
 [node name="Header" type="HBoxContainer" parent="Margin/VBox"]
 layout_mode = 2
@@ -49,14 +61,25 @@ layout_mode = 2
 [node name="Title" type="Label" parent="Margin/VBox/Header"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 34
+theme_override_font_sizes/font_size = 30
 text = "THE BENCH"
+
+[node name="PartsLabel" type="Label" parent="Margin/VBox/Header"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.78, 0.84, 0.92, 1)
+theme_override_font_sizes/font_size = 15
+text = "SCRAP 0   ·   ALLOY 0   ·   CIRCUITS 0"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="CreditsLabel" type="Label" parent="Margin/VBox/Header"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
 theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
-theme_override_font_sizes/font_size = 30
+theme_override_font_sizes/font_size = 28
 text = "CREDITS  0"
 horizontal_alignment = 2
 
@@ -64,49 +87,58 @@ horizontal_alignment = 2
 unique_name_in_owner = true
 layout_mode = 2
 modulate = Color(1, 1, 1, 0.8)
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 14
 text = "Spend credits on your pistol between waves."
+autowrap_mode = 3
+
+[node name="StorageWarning" type="Label" parent="Margin/VBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.55, 0.45, 1)
+theme_override_font_sizes/font_size = 14
+text = "Saving is unavailable here."
 autowrap_mode = 3
 
 [node name="Body" type="HBoxContainer" parent="Margin/VBox"]
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/separation = 14
+theme_override_constants/separation = 10
 
 [node name="CorePanel" type="PanelContainer" parent="Margin/VBox/Body"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 1.15
+size_flags_stretch_ratio = 0.9
 theme_override_styles/panel = SubResource("Style_panel")
 
 [node name="Margin" type="MarginContainer" parent="Margin/VBox/Body/CorePanel"]
 layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 14
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 14
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
 
 [node name="VBox" type="VBoxContainer" parent="Margin/VBox/Body/CorePanel/Margin"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 8
 
 [node name="Heading" type="Label" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
 text = "CORE TUNING"
 
 [node name="Blurb" type="Label" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
 layout_mode = 2
 modulate = Color(1, 1, 1, 0.7)
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 12
 text = "Numbers only, never behaviour. Always safe to buy. Prices rise 15% per level."
 autowrap_mode = 3
 
 [node name="CoreRows" type="VBoxContainer" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 6
 
 [node name="Separator" type="HSeparator" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
 layout_mode = 2
@@ -114,94 +146,244 @@ layout_mode = 2
 [node name="SummaryHeading" type="Label" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 15
 text = "YOUR PISTOL"
 
 [node name="StatsSummary" type="Label" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 15
+theme_override_font_sizes/font_size = 14
 text = "Damage per shot   10"
 
-[node name="SlotsPanel" type="PanelContainer" parent="Margin/VBox/Body"]
+[node name="GunsmithPanel" type="PanelContainer" parent="Margin/VBox/Body"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 1.0
+size_flags_stretch_ratio = 1.75
 theme_override_styles/panel = SubResource("Style_panel")
 
-[node name="Margin" type="MarginContainer" parent="Margin/VBox/Body/SlotsPanel"]
+[node name="Margin" type="MarginContainer" parent="Margin/VBox/Body/GunsmithPanel"]
 layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 14
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 14
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
 
-[node name="VBox" type="VBoxContainer" parent="Margin/VBox/Body/SlotsPanel/Margin"]
+[node name="VBox" type="VBoxContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 5
 
-[node name="Heading" type="Label" parent="Margin/VBox/Body/SlotsPanel/Margin/VBox"]
+[node name="GunsmithHeader" type="HBoxContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox"]
+layout_mode = 2
+
+[node name="Heading" type="Label" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/GunsmithHeader"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
 text = "GUNSMITH"
 
-[node name="Blurb" type="Label" parent="Margin/VBox/Body/SlotsPanel/Margin/VBox"]
-layout_mode = 2
-modulate = Color(1, 1, 1, 0.7)
-theme_override_font_sizes/font_size = 13
-text = "Attachments drop from enemies and change how the pistol behaves. Every slot is still locked."
-autowrap_mode = 3
-
-[node name="SlotGrid" type="GridContainer" parent="Margin/VBox/Body/SlotsPanel/Margin/VBox"]
+[node name="GunsmithBlurb" type="Label" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/GunsmithHeader"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_constants/h_separation = 8
-theme_override_constants/v_separation = 8
-columns = 2
+size_flags_horizontal = 3
+modulate = Color(1, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 12
+text = "Attachments drop from enemies and change how the pistol behaves."
+horizontal_alignment = 2
+vertical_alignment = 1
+autowrap_mode = 3
+
+[node name="SlotGrid" type="GridContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 6
+theme_override_constants/v_separation = 6
+columns = 4
+
+[node name="Separator" type="HSeparator" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox"]
+layout_mode = 2
+
+[node name="InventoryHeader" type="HBoxContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox"]
+layout_mode = 2
+
+[node name="InventoryLabel" type="Label" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/InventoryHeader"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "INVENTORY  0 / 40"
+vertical_alignment = 1
+
+[node name="DismantleCommonsButton" type="Button" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/InventoryHeader"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 12
+text = "Dismantle unlocked Commons (0)"
+
+[node name="InventoryGrid" type="GridContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 3
+theme_override_constants/v_separation = 3
+columns = 10
+
+[node name="TrayBox" type="VBoxContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="TrayLabel" type="Label" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/TrayBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.5, 1)
+theme_override_font_sizes/font_size = 12
+text = "OVERFLOW TRAY"
+autowrap_mode = 3
+
+[node name="TrayGrid" type="GridContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/TrayBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 3
+theme_override_constants/v_separation = 3
+columns = 10
+
+[node name="DetailPanel" type="PanelContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox"]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_styles/panel = SubResource("Style_detail")
+
+[node name="Margin" type="MarginContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/DetailPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 6
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 6
+
+[node name="VBox" type="VBoxContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/DetailPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="DetailTitle" type="Label" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/DetailPanel/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 15
+text = "No item selected"
+
+[node name="DetailScroll" type="ScrollContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/DetailPanel/Margin/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="DetailText" type="VBoxContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/DetailPanel/Margin/VBox/DetailScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 3
+
+[node name="DetailBody" type="Label" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/DetailPanel/Margin/VBox/DetailScroll/DetailText"]
+unique_name_in_owner = true
+layout_mode = 2
+modulate = Color(1, 1, 1, 0.85)
+theme_override_font_sizes/font_size = 12
+text = "Click an item to compare it with what is fitted."
+autowrap_mode = 3
+
+[node name="CompareLabel" type="Label" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/DetailPanel/Margin/VBox/DetailScroll/DetailText"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.95, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = ""
+autowrap_mode = 3
+
+[node name="DetailButtons" type="HBoxContainer" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/DetailPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="EquipButton" type="Button" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/DetailPanel/Margin/VBox/DetailButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 30)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Equip"
+
+[node name="LockButton" type="Button" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/DetailPanel/Margin/VBox/DetailButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(70, 30)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Lock"
+
+[node name="MoveButton" type="Button" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/DetailPanel/Margin/VBox/DetailButtons"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(120, 30)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "Move to inventory"
+
+[node name="DismantleButton" type="Button" parent="Margin/VBox/Body/GunsmithPanel/Margin/VBox/DetailPanel/Margin/VBox/DetailButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 30)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.75, 0.7, 1)
+theme_override_font_sizes/font_size = 13
+text = "Dismantle"
 
 [node name="WavesPanel" type="PanelContainer" parent="Margin/VBox/Body"]
 layout_mode = 2
 size_flags_horizontal = 3
-size_flags_stretch_ratio = 0.95
+size_flags_stretch_ratio = 0.8
 theme_override_styles/panel = SubResource("Style_panel")
 
 [node name="Margin" type="MarginContainer" parent="Margin/VBox/Body/WavesPanel"]
 layout_mode = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 14
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 14
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
 
 [node name="VBox" type="VBoxContainer" parent="Margin/VBox/Body/WavesPanel/Margin"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 6
 
 [node name="Heading" type="Label" parent="Margin/VBox/Body/WavesPanel/Margin/VBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
 text = "WAVES"
 
 [node name="WaveList" type="VBoxContainer" parent="Margin/VBox/Body/WavesPanel/Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_constants/separation = 6
+theme_override_constants/separation = 3
 
 [node name="WaveNote" type="Label" parent="Margin/VBox/Body/WavesPanel/Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 modulate = Color(1, 1, 1, 0.7)
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 12
 text = "Clear a wave to unlock the next."
 autowrap_mode = 3
 
+[node name="AreasHeading" type="Label" parent="Margin/VBox/Body/WavesPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 15
+text = "SIDE AREAS"
+
+[node name="AreaList" type="VBoxContainer" parent="Margin/VBox/Body/WavesPanel/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 3
+
 [node name="StartButton" type="Button" parent="Margin/VBox/Body/WavesPanel/Margin/VBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 60)
+custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 22
 text = "START WAVE 1"
 
 [node name="Footer" type="HBoxContainer" parent="Margin/VBox"]
@@ -211,8 +393,8 @@ layout_mode = 2
 layout_mode = 2
 size_flags_horizontal = 3
 modulate = Color(1, 1, 1, 0.6)
-theme_override_font_sizes/font_size = 13
-text = "Progress saves here. Dying keeps your credits. Esc during a wave pauses; the pause menu has options and Abandon wave."
+theme_override_font_sizes/font_size = 12
+text = "Progress saves here. Dying keeps credits and collected loot; loot still on the floor is lost. Esc during a wave pauses; the pause menu has options and Abandon wave."
 
 [node name="ResetButton" type="Button" parent="Margin/VBox/Footer"]
 unique_name_in_owner = true

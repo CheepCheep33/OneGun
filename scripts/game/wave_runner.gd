@@ -1,16 +1,17 @@
 class_name WaveRunner
 extends Node
 ## Runs one authored wave at a time: spawns its groups at marked points away from the player,
-## holds the alive cap, pays kill credits the moment an enemy dies, and reports the clear.
-## Replaces the Milestone 1 test spawner.
+## holds the alive cap (drones count as half), pays kill credits the moment an enemy dies, and
+## reports the clear. Boss waves announce their boss for the HUD bar.
 
-signal enemy_killed(enemy: Chaser, credits: int)
+signal enemy_killed(enemy: Enemy, credits: int)
 ## The number of enemies left to kill changed (spawned-but-alive plus not-yet-spawned).
 signal remaining_changed(remaining: int, total: int)
 signal wave_cleared(wave: WaveDefinition, duration: float)
+signal boss_spawned(enemy: Enemy)
 
 const WAVE_DIR := "res://data/waves/"
-const WAVE_COUNT := 5
+const WAVE_COUNT := 10
 
 @export var container_path: NodePath
 ## Spawn points closer than this to the player are skipped.
@@ -81,12 +82,29 @@ func clear_enemies() -> void:
 		enemy.queue_free()
 
 
+## Living enemies, each weighted by its definition's share of the cap (drones count as half).
+func active_weight() -> float:
+	var weight := 0.0
+	for enemy in _container.get_children():
+		if enemy is Enemy and enemy.is_alive:
+			weight += enemy.definition.counts_as
+	return weight
+
+
 func active_count() -> int:
 	var count := 0
 	for enemy in _container.get_children():
-		if enemy is Chaser and enemy.is_alive:
+		if enemy is Enemy and enemy.is_alive:
 			count += 1
 	return count
+
+
+func living_enemies() -> Array[Enemy]:
+	var result: Array[Enemy] = []
+	for enemy in _container.get_children():
+		if enemy is Enemy and enemy.is_alive:
+			result.append(enemy)
+	return result
 
 
 func remaining() -> int:
@@ -103,12 +121,13 @@ func _physics_process(delta: float) -> void:
 		_timers[i] -= delta
 		if _timers[i] > 0.0:
 			continue
-		if active_count() >= current.max_alive:
+		var group := current.groups[i]
+		var weight := group.definition.counts_as if group.definition else 1.0
+		if active_weight() + weight > current.max_alive + 0.001:
 			continue
 		var point := _pick_spawn_point()
 		if point == null:
 			continue
-		var group := current.groups[i]
 		spawn_at(point.global_position, group.definition, group.enemy_scene)
 		_pending[i] -= 1
 		_timers[i] = group.interval
@@ -116,7 +135,7 @@ func _physics_process(delta: float) -> void:
 
 ## Spawns one enemy. Definition and scene default to the current wave's first group, so tests
 ## can drop an enemy in front of the player without authoring a wave.
-func spawn_at(position: Vector3, definition: EnemyDefinition = null, scene: PackedScene = null) -> Chaser:
+func spawn_at(position: Vector3, definition: EnemyDefinition = null, scene: PackedScene = null) -> Enemy:
 	if definition == null and current and not current.groups.is_empty():
 		definition = current.groups[0].definition
 	if scene == null and current and not current.groups.is_empty():
@@ -125,7 +144,7 @@ func spawn_at(position: Vector3, definition: EnemyDefinition = null, scene: Pack
 		scene = load("res://scenes/enemies/chaser.tscn")
 	if definition == null:
 		definition = load("res://data/enemies/chaser.tres")
-	var enemy: Chaser = scene.instantiate()
+	var enemy: Enemy = scene.instantiate()
 	enemy.definition = definition
 	enemy.health_scale = scale
 	enemy.target = _player
@@ -133,6 +152,8 @@ func spawn_at(position: Vector3, definition: EnemyDefinition = null, scene: Pack
 	enemy.global_position = position
 	enemy.died.connect(_on_enemy_died)
 	_spawned += 1
+	if definition.is_boss:
+		boss_spawned.emit(enemy)
 	return enemy
 
 
@@ -154,7 +175,7 @@ func _is_occupied(position: Vector3) -> bool:
 	return false
 
 
-func _on_enemy_died(enemy: Chaser) -> void:
+func _on_enemy_died(enemy: Enemy) -> void:
 	var credits := maxi(roundi(enemy.definition.credit_reward * scale), 1)
 	enemy_killed.emit(enemy, credits)
 	if not running or current == null:

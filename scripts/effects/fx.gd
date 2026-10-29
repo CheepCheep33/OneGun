@@ -3,14 +3,16 @@ extends RefCounted
 ## Short-lived placeholder combat effects.
 ## Each effect is parented to the current scene and frees itself, so a restart clears them all.
 
+const TRACER_COLOR := Color(1.0, 0.9, 0.55, 0.7)
 
-static func tracer(context: Node, from: Vector3, to: Vector3) -> void:
+
+static func tracer(context: Node, from: Vector3, to: Vector3, color := TRACER_COLOR) -> void:
 	var length := from.distance_to(to)
 	if length < 0.3:
 		return
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.015, 0.015, length)
-	var material := _unshaded(Color(1.0, 0.9, 0.55, 0.7))
+	var material := _unshaded(color)
 	var node := MeshInstance3D.new()
 	node.mesh = mesh
 	node.material_override = material
@@ -95,11 +97,34 @@ static func burst(context: Node, position: Vector3, color: Color) -> void:
 	tween.tween_callback(particles.queue_free)
 
 
+## A flat ring on the floor that expands to `radius` and fades: the Warden's slam.
+static func ring(context: Node, position: Vector3, radius: float, color: Color, duration := 0.4) -> void:
+	var mesh := TorusMesh.new()
+	mesh.inner_radius = 0.82
+	mesh.outer_radius = 1.0
+	mesh.rings = 32
+	mesh.ring_segments = 6
+	var material := _unshaded(Color(color.r, color.g, color.b, 0.85))
+	var node := MeshInstance3D.new()
+	node.mesh = mesh
+	node.material_override = material
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if not _add(context, node):
+		return
+	node.global_position = position
+	node.scale = Vector3(0.3, 0.3, 0.3)
+	var tween := node.create_tween().set_parallel()
+	tween.tween_property(node, "scale", Vector3(radius, 0.3, radius), duration).set_ease(Tween.EASE_OUT)
+	tween.tween_property(material, "albedo_color:a", 0.0, duration)
+	tween.chain().tween_callback(node.queue_free)
+
+
 ## Positional sound that outlives the node that triggered it (for example a dying enemy).
-static func sound_at(context: Node, stream: AudioStream, position: Vector3, volume_db := 0.0) -> void:
+static func sound_at(context: Node, stream: AudioStream, position: Vector3, volume_db := 0.0, pitch := 1.0) -> void:
 	var player := AudioStreamPlayer3D.new()
 	player.stream = stream
 	player.volume_db = volume_db
+	player.pitch_scale = pitch
 	player.unit_size = 8.0
 	if not _add(context, player):
 		return

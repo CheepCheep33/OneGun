@@ -4,6 +4,7 @@
 [ext_resource type="PackedScene" path="res://scenes/arena/arena.tscn" id="2_arena"]
 [ext_resource type="PackedScene" path="res://scenes/player/player.tscn" id="3_player"]
 [ext_resource type="Script" path="res://scripts/game/wave_runner.gd" id="4_runner"]
+[ext_resource type="Script" path="res://scripts/projectiles/projectile_pool.gd" id="5_projectiles"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="7_hud"]
 [ext_resource type="PackedScene" path="res://scenes/ui/pause_menu.tscn" id="8_pause"]
 [ext_resource type="PackedScene" path="res://scenes/ui/touch_controls.tscn" id="9_touch"]
@@ -40,6 +41,11 @@ shadow_enabled = true
 [node name="Player" parent="." instance=ExtResource("3_player")]
 
 [node name="Enemies" type="Node3D" parent="."]
+
+[node name="Drops" type="Node3D" parent="."]
+
+[node name="Projectiles" type="Node3D" parent="."]
+script = ExtResource("5_projectiles")
 
 [node name="WaveRunner" type="Node" parent="."]
 script = ExtResource("4_runner")

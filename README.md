@@ -26,10 +26,11 @@ The workflow needs two repository secrets: `CLOUDFLARE_API_TOKEN` (with Cloudfla
 | Move | W A S D |
 | Sprint | Shift |
 | Jump | Space |
-| Shoot | Left mouse |
+| Shoot (hold with an Automatic receiver) | Left mouse |
 | Reload | R |
-| Pause and options | Esc (during a wave) |
+| Pause and options | Esc (during a wave or in the Firing Range) |
 | Back to the bench after death | R or the button |
+| Pick up a drop | Walk over its beam |
 
 **Phones and tablets (temporary testing controls):** turn the device sideways and tap the game.
 On-screen controls appear after the first touch. The left thumb drives a floating stick (push to
@@ -37,42 +38,65 @@ the edge to sprint), dragging anywhere else looks around, and the buttons fire, 
 and pause (II).
 
 Options in the pause menu: mouse sensitivity, field of view, camera recoil, damage numbers, volume.
-The pause menu's **Abandon wave** returns to the bench, keeping kill credits but paying no bonus.
+The pause menu's **Abandon wave** (or **Leave the range**) returns to the bench, keeping kill
+credits and collected loot but paying no bonus.
 
 ## The loop
 
 The game opens on **the bench**. Buy core tuning levels (damage, fire rate, magazine, reload speed)
-with credits, pick a wave, and press Start. Kills pay credits immediately; clearing a wave pays a
-bonus and unlocks the next. Dying keeps the credits you earned. Progress saves at the bench to
-`user://save.json`; the bench's **Reset progress** button (press twice) wipes it. A playtest log is
-written to `user://playtest_log.txt`. On Linux `user://` is `~/.local/share/godot/app_userdata/One Gun, Infinite Upgrades/`.
+with credits, fit attachments in the **gunsmith**, pick a wave, and press Start. Kills pay credits
+immediately and sometimes drop an attachment (a beam on the floor); clearing a wave pays a bonus,
+one Uncommon attachment, and unlocks the next. Dying keeps the credits and the loot you picked up;
+loot still on the floor is lost. The Warden waits at wave 5 and opens two more slots.
 
-## Automated smoke test
+Click an inventory item at the bench to see what it would change before equipping it. The inventory
+holds 40 items; extras land in an overflow tray until you move or dismantle them. Dismantling pays
+parts for the crafting table that comes in Milestone 4. The **Firing Range** (opens after wave 2)
+has dummies with live damage readouts and a timed gallery that pays one Uncommon.
 
-Checks the item model, the stats functions, the save file and the wave data, then drives the real
-game scene through the bench, movement, shooting, killing, reloading, pausing, touch controls, a
-full wave, a purchase, death and retry, replay and abandon:
+Progress saves at the bench to `user://save.json`; the bench's **Reset progress** button (press
+twice) wipes it. A playtest log is written to `user://playtest_log.txt`. On Linux `user://` is
+`~/.local/share/godot/app_userdata/One Gun, Infinite Upgrades/`.
+
+## Automated checks
+
+**Smoke test.** Checks the item model, the stats functions, the loot tables and inventory rules, the
+save file and the wave data, then drives the real game scene: the bench and gunsmith, movement,
+shooting, fire modes, pierce and projectiles, the shooter, drones and the Warden, drops, the Firing
+Range, death and retry, replay and abandon. Case scripts live in `tests/cases/`.
 
 ```
 godot --headless --path . res://tests/smoke_test.tscn
 ```
 
 It prints PASS/FAIL per check and exits with code 1 if anything failed. It checks logic only; it does
-not replace playing the game.
+not replace playing the game. It resets the save in `user://`, so back yours up first.
 
-A screenshot tour saves pictures of the bench, a wave, the cleared banner and the death screen
+**Reforge simulation.** The plan's prototype gate: a first run and three consecutive Reforges with
+the real stats function, cost curves and loot tables and a scripted buyer. Prints a table of shots
+to kill, recovery minutes and minutes per tier, and exits with code 1 if a target is missed. The
+modelled assumptions are named constants at the top of `tests/reforge_sim.gd`.
+
+```
+godot --headless --path . res://tests/reforge_sim.tscn
+```
+
+**Screenshot tour.** Saves pictures of the bench, the gunsmith compare view, a wave with a shooter
+and a drop, the Warden, the cleared banner, the Firing Range, the overflow tray and the death screen
 (needs a display; `xvfb-run` works):
 
 ```
 xvfb-run godot --path . --rendering-driver opengl3 res://tests/screenshot_tour.tscn -- out_dir=/tmp/shots
 ```
 
+CI runs the smoke test and the Reforge simulation on every push before exporting the web build.
+
 ## Project layout
 
 ```
 assets/      placeholder audio and textures (named placeholder_*)
-data/        tunable resources: weapon base stats, core tuning, slots, affixes, enemies, waves
-scenes/      main scene, arena, player, pistol, enemies, UI (HUD, bench, pause menu)
-scripts/     GDScript by responsibility (player, weapons, enemies, game, progression, ui, effects)
-tests/       headless smoke test and the screenshot tour
+data/        tunable resources: weapon base stats, core tuning, attachment bases and slots, affixes, enemies, waves
+scenes/      main scene, arena, side areas, player, pistol, enemies, UI (HUD, bench, pause menu)
+scripts/     GDScript by responsibility (player, weapons, projectiles, enemies, areas, game, progression, ui, effects)
+tests/       smoke test driver and cases, the Reforge simulation, the screenshot tour
 ```
