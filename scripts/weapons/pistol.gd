@@ -1,7 +1,8 @@
 class_name Pistol
 extends Node3D
 ## The player's one gun: hitscan firing, magazine, reload, and shot feedback.
-## Effective stats always come from WeaponStats.compute(); this script never edits them.
+## Effective stats always come from WeaponStats.build() and arrive through apply_stats(); this
+## script never edits them. Each shot's final damage comes from WeaponStats.resolve_shot().
 
 signal ammo_changed(in_magazine: int, magazine_size: int)
 signal reload_started(duration: float)
@@ -31,6 +32,7 @@ var mouse_input_enabled := true
 
 var _camera: Camera3D
 var _shooter_rid: RID
+var _rng := RandomNumberGenerator.new()
 var _cooldown := 0.0
 var _buffered_fire := 0.0
 var _reload_left := 0.0
@@ -49,10 +51,22 @@ var _model_rest: Vector3
 
 
 func _ready() -> void:
-	stats = WeaponStats.compute(base_stats)
-	ammo = stats.magazine_size
+	if stats == null:
+		apply_stats(WeaponStats.build(base_stats))
 	_model_rest = _model.position
 	_set_flash_visible(false)
+
+
+## Takes a freshly built stats object (at the bench, never mid-wave) and refills the magazine.
+func apply_stats(new_stats: WeaponStats) -> void:
+	stats = new_stats
+	ammo = stats.magazine_size
+	is_reloading = false
+	_reload_left = 0.0
+	_cooldown = 0.0
+	_buffered_fire = 0.0
+	ammo_changed.emit(ammo, stats.magazine_size)
+	reload_finished.emit()
 
 
 ## Called by the player: the camera defines the aim ray and the shooter is excluded from hits.
@@ -132,10 +146,13 @@ func _cast_shot() -> void:
 		end_point = hit.position
 		var target: Object = hit.collider
 		if target.has_method("take_hit"):
-			var killed: bool = target.take_hit(stats.damage, hit.position, direction)
+			var context := WeaponStats.ShotContext.new()
+			context.distance = origin.distance_to(hit.position)
+			var shot := WeaponStats.resolve_shot(stats, context, _rng)
+			var killed: bool = target.take_hit(shot.damage, hit.position, direction)
 			hit_landed.emit(killed)
 			if Settings.show_damage_numbers:
-				Fx.damage_number(self, hit.position, stats.damage, killed)
+				Fx.damage_number(self, hit.position, shot.damage, killed)
 		else:
 			Fx.impact(self, hit.position, hit.normal)
 	Fx.tracer(self, _muzzle.global_position, end_point)

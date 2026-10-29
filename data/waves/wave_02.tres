@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="WaveDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/game/wave_definition.gd" id="1_wave"]
+[ext_resource type="Script" path="res://scripts/game/spawn_group.gd" id="2_group"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/chaser.tscn" id="3_chaser"]
+[ext_resource type="Resource" path="res://data/enemies/chaser.tres" id="4_chaser_def"]
+[ext_resource type="Resource" path="res://data/enemies/runner.tres" id="5_runner_def"]
+
+[sub_resource type="Resource" id="Group_1"]
+script = ExtResource("2_group")
+enemy_scene = ExtResource("3_chaser")
+definition = ExtResource("4_chaser_def")
+count = 8
+interval = 1.6
+start_delay = 1.5
+
+[resource]
+script = ExtResource("1_wave")
+number = 2
+display_name = "Pressure"
+groups = Array[ExtResource("2_group")]([SubResource("Group_1")])
+max_alive = 4
+completion_bonus = 40
+is_boss_wave = false

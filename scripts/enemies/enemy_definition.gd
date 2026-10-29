@@ -11,5 +11,7 @@ extends Resource
 ## Telegraph time before the hit lands. The attack misses if the player has backed off by then.
 @export var attack_windup := 0.45
 @export var attack_cooldown := 0.9
+## Credits paid the moment this enemy dies, before wave-tier scaling.
+@export var credit_reward := 5
 ## Death burst and hit-flash tint, so enemy types stay readable.
 @export var color := Color(0.85, 0.25, 0.2)

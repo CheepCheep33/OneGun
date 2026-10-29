@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EnemyDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/enemy_definition.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+display_name = "Runner"
+max_health = 20.0
+move_speed = 5.2
+attack_damage = 8.0
+attack_range = 1.6
+attack_windup = 0.35
+attack_cooldown = 0.8
+credit_reward = 4
+color = Color(0.95, 0.6, 0.15, 1)

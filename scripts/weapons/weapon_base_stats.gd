@@ -11,6 +11,8 @@ extends Resource
 ## Seconds from starting a reload to a full magazine.
 @export var reload_time := 1.4
 @export var max_range := 150.0
+## Starting critical hit chance (0 to 1). Core tuning adds to it once the basic loop works.
+@export var crit_chance := 0.0
 ## Degrees the camera kicks up per shot (scaled by the player's camera recoil setting).
 @export var recoil_kick_degrees := 1.2
 

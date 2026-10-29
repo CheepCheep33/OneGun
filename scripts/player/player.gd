@@ -30,6 +30,8 @@ var _recoil_pitch := 0.0
 var _capture_settle_left := 0.0
 var _mouse_input_enabled := true
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+var _head_rest_position: Vector3
+var _death_tween: Tween
 
 @onready var head: Node3D = $Head
 @onready var camera: Camera3D = $Head/Camera3D
@@ -39,6 +41,7 @@ var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 func _ready() -> void:
 	health = max_health
+	_head_rest_position = head.position
 	pistol.setup(camera, get_rid())
 	pistol.fired.connect(_on_pistol_fired)
 	Settings.changed.connect(_apply_settings)
@@ -110,10 +113,27 @@ func _die() -> void:
 	is_dead = true
 	pistol.enabled = false
 	pistol.visible = false
-	var tween := create_tween().set_parallel()
-	tween.tween_property(head, "position:y", 0.6, 0.5).set_ease(Tween.EASE_IN)
-	tween.tween_property(head, "rotation:z", deg_to_rad(15.0), 0.5)
+	_death_tween = create_tween().set_parallel()
+	_death_tween.tween_property(head, "position:y", 0.6, 0.5).set_ease(Tween.EASE_IN)
+	_death_tween.tween_property(head, "rotation:z", deg_to_rad(15.0), 0.5)
 	died.emit()
+
+
+## Puts the player back at a start transform at full health with the gun ready, for the next wave.
+func revive(start: Transform3D) -> void:
+	if _death_tween:
+		_death_tween.kill()
+	is_dead = false
+	health = max_health
+	velocity = Vector3.ZERO
+	global_transform = start
+	head.position = _head_rest_position
+	head.rotation = Vector3.ZERO
+	_pitch = 0.0
+	_recoil_pitch = 0.0
+	pistol.enabled = true
+	pistol.visible = true
+	health_changed.emit(health, max_health)
 
 
 func _on_pistol_fired(kick_degrees: float) -> void:
