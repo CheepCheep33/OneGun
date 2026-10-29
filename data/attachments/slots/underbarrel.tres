@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="SlotDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/slot_definition.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = &"underbarrel"
+display_name = "Underbarrel"
+summary = "Alternate fire and stability"
+gate_text = "Opens after wave 10"
+unlock_wave = 10
+sort_order = 6

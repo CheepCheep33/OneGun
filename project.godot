@@ -13,6 +13,7 @@ config/features=PackedStringArray("4.3", "GL Compatibility")
 [autoload]
 
 Settings="*res://scripts/autoload/settings.gd"
+Progression="*res://scripts/progression/progression.gd"
 
 [display]
 

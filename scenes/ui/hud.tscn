@@ -36,7 +36,16 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("2_crosshair")
 
-[node name="ReloadBar" type="ProgressBar" parent="."]
+[node name="Combat" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="ReloadBar" type="ProgressBar" parent="Combat"]
 unique_name_in_owner = true
 anchors_preset = 8
 anchor_left = 0.5
@@ -53,7 +62,7 @@ theme_override_styles/fill = SubResource("Style_reload_fill")
 max_value = 1.0
 show_percentage = false
 
-[node name="Health" type="VBoxContainer" parent="."]
+[node name="Health" type="VBoxContainer" parent="Combat"]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
@@ -64,14 +73,14 @@ offset_bottom = -28.0
 grow_vertical = 0
 mouse_filter = 2
 
-[node name="HealthLabel" type="Label" parent="Health"]
+[node name="HealthLabel" type="Label" parent="Combat/Health"]
 unique_name_in_owner = true
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 20
 text = "HEALTH  100"
 
-[node name="HealthBar" type="ProgressBar" parent="Health"]
+[node name="HealthBar" type="ProgressBar" parent="Combat/Health"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(280, 16)
 mouse_filter = 2
@@ -80,7 +89,7 @@ theme_override_styles/fill = SubResource("Style_health_fill")
 value = 100.0
 show_percentage = false
 
-[node name="AmmoLabel" type="Label" parent="."]
+[node name="AmmoLabel" type="Label" parent="Combat"]
 unique_name_in_owner = true
 anchors_preset = 3
 anchor_left = 1.0
@@ -100,7 +109,7 @@ text = "10 / 10"
 horizontal_alignment = 2
 vertical_alignment = 2
 
-[node name="KillsLabel" type="Label" parent="."]
+[node name="KillsLabel" type="Label" parent="Combat"]
 unique_name_in_owner = true
 anchors_preset = 1
 anchor_left = 1.0
@@ -116,18 +125,26 @@ theme_override_font_sizes/font_size = 22
 text = "KILLS  0"
 horizontal_alignment = 2
 
-[node name="ControlsHint" type="Label" parent="."]
-offset_left = 28.0
-offset_top = 24.0
-offset_right = 700.0
-offset_bottom = 50.0
+[node name="ControlsHint" type="Label" parent="Combat"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -340.0
+offset_top = -52.0
+offset_right = 340.0
+offset_bottom = -28.0
+grow_horizontal = 2
+grow_vertical = 0
 modulate = Color(1, 1, 1, 0.7)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 4
 theme_override_font_sizes/font_size = 15
 text = "WASD move   Shift sprint   Space jump   LMB shoot   R reload   Esc pause"
+horizontal_alignment = 1
 
-[node name="CapturePrompt" type="Label" parent="."]
+[node name="CapturePrompt" type="Label" parent="Combat"]
 unique_name_in_owner = true
 visible = false
 anchors_preset = 8
@@ -143,6 +160,110 @@ theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 8
 theme_override_font_sizes/font_size = 30
 text = "Click or tap to play"
+horizontal_alignment = 1
+
+[node name="CreditsLabel" type="Label" parent="Combat"]
+unique_name_in_owner = true
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -300.0
+offset_top = 54.0
+offset_right = -28.0
+offset_bottom = 84.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 22
+text = "CREDITS  0"
+horizontal_alignment = 2
+
+[node name="CreditGainLabel" type="Label" parent="Combat"]
+unique_name_in_owner = true
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -300.0
+offset_top = 84.0
+offset_right = -28.0
+offset_bottom = 110.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 20
+text = "+5"
+horizontal_alignment = 2
+
+[node name="WaveLabel" type="Label" parent="Combat"]
+unique_name_in_owner = true
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -300.0
+offset_top = 20.0
+offset_right = 300.0
+offset_bottom = 50.0
+grow_horizontal = 2
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 22
+text = "WAVE 1  ·  FIRST CONTACT"
+horizontal_alignment = 1
+
+[node name="WaveProgressLabel" type="Label" parent="Combat"]
+unique_name_in_owner = true
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -300.0
+offset_top = 50.0
+offset_right = 300.0
+offset_bottom = 76.0
+grow_horizontal = 2
+modulate = Color(1, 1, 1, 0.85)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 18
+text = "5 / 5 left"
+horizontal_alignment = 1
+
+[node name="ClearedBanner" type="VBoxContainer" parent="Combat"]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -350.0
+offset_top = -150.0
+offset_right = 350.0
+offset_bottom = -40.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="ClearedTitle" type="Label" parent="Combat/ClearedBanner"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 1, 0.65, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 10
+theme_override_font_sizes/font_size = 54
+text = "WAVE 1 CLEARED"
+horizontal_alignment = 1
+
+[node name="ClearedDetail" type="Label" parent="Combat/ClearedBanner"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 8
+theme_override_font_sizes/font_size = 28
+text = "+25 credits"
 horizontal_alignment = 1
 
 [node name="DeathPanel" type="ColorRect" parent="."]
@@ -179,16 +300,23 @@ horizontal_alignment = 1
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 22
-text = "Chasers destroyed: 0"
+text = "Wave 1  ·  0 kills  ·  0 credits kept"
 horizontal_alignment = 1
 
-[node name="RestartButton" type="Button" parent="DeathPanel/Center/VBox"]
+[node name="DeathHint" type="Label" parent="DeathPanel/Center/VBox"]
+layout_mode = 2
+modulate = Color(1, 1, 1, 0.75)
+theme_override_font_sizes/font_size = 17
+text = "Credits earned this wave are yours. Spend them at the bench and try again."
+horizontal_alignment = 1
+
+[node name="BenchButton" type="Button" parent="DeathPanel/Center/VBox"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(240, 52)
+custom_minimum_size = Vector2(280, 52)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_font_sizes/font_size = 22
-text = "Restart  (R)"
+text = "Back to the bench  (R)"
 
 [node name="HitSound" type="AudioStreamPlayer" parent="."]
 stream = ExtResource("3_hit")

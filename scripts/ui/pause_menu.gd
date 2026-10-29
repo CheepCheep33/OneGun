@@ -1,9 +1,10 @@
 class_name PauseMenu
 extends CanvasLayer
-## Pause menu with resume, restart, quit, and player options. Runs while the tree is paused.
+## Pause menu with resume, abandon wave, quit, and player options. Runs while the tree is paused.
 
 signal resume_requested
-signal restart_requested
+## Leave the wave and go back to the bench (kill credits kept, no completion bonus).
+signal abandon_requested
 signal quit_requested
 
 @onready var _options: VBoxContainer = %Options
@@ -12,7 +13,7 @@ signal quit_requested
 func _ready() -> void:
 	visible = false
 	%ResumeButton.pressed.connect(func() -> void: resume_requested.emit())
-	%RestartButton.pressed.connect(func() -> void: restart_requested.emit())
+	%AbandonButton.pressed.connect(func() -> void: abandon_requested.emit())
 	%QuitButton.pressed.connect(func() -> void: quit_requested.emit())
 	_add_slider("Mouse sensitivity", &"mouse_sensitivity", Settings.MOUSE_SENSITIVITY_RANGE, 0.05, "%.2f")
 	_add_slider("Field of view", &"field_of_view", Settings.FIELD_OF_VIEW_RANGE, 1.0, "%d")

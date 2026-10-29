@@ -20,7 +20,12 @@ const FALL_LIMIT := -20.0
 @export var death_sound: AudioStream
 
 var target: Player
+## Set by the wave runner before the enemy enters the tree: wave tier and Reforge tier scaling.
+var health_scale := 1.0
 var health := 0.0
+var max_health: float:
+	get:
+		return definition.max_health * health_scale
 var state := State.SPAWNING
 var is_alive: bool:
 	get:
@@ -40,7 +45,7 @@ var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 
 func _ready() -> void:
-	health = definition.max_health
+	health = max_health
 	# Each enemy gets its own material so hit flashes don't light up every chaser.
 	_material = _body.get_active_material(0).duplicate()
 	_body.set_surface_override_material(0, _material)

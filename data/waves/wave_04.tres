@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="WaveDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/game/wave_definition.gd" id="1_wave"]
+[ext_resource type="Script" path="res://scripts/game/spawn_group.gd" id="2_group"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/chaser.tscn" id="3_chaser"]
+[ext_resource type="Resource" path="res://data/enemies/chaser.tres" id="4_chaser_def"]
+[ext_resource type="Resource" path="res://data/enemies/runner.tres" id="5_runner_def"]
+
+[sub_resource type="Resource" id="Group_1"]
+script = ExtResource("2_group")
+enemy_scene = ExtResource("3_chaser")
+definition = ExtResource("4_chaser_def")
+count = 10
+interval = 1.4
+start_delay = 1.5
+
+[sub_resource type="Resource" id="Group_2"]
+script = ExtResource("2_group")
+enemy_scene = ExtResource("3_chaser")
+definition = ExtResource("5_runner_def")
+count = 8
+interval = 1.0
+start_delay = 8.0
+
+[resource]
+script = ExtResource("1_wave")
+number = 4
+display_name = "The pack"
+groups = Array[ExtResource("2_group")]([SubResource("Group_1"), SubResource("Group_2")])
+max_alive = 6
+completion_bonus = 80
+is_boss_wave = false

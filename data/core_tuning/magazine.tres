@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CoreTuningDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/core_tuning_definition.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = &"magazine"
+display_name = "Magazine"
+description = "One more round per level."
+stat = &"magazine"
+flat_per_level = 1.0
+percent_per_level = 0.0
+base_cost = 25
+cost_growth = 1.15
+max_level = 50
+sort_order = 2

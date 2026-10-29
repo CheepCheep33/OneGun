@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="AffixDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/affix_definition.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = &"piercing"
+display_name = "Piercing"
+stat = &"extra_pierce"
+is_percent = false
+min_by_rarity = Array[float]([0.0, 1.0, 1.0, 1.0, 1.0])
+max_by_rarity = Array[float]([0.0, 1.0, 1.0, 2.0, 2.0])

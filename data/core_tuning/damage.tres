@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="CoreTuningDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/core_tuning_definition.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = &"damage"
+display_name = "Damage"
+description = "Each round hits harder. Uncapped."
+stat = &"damage"
+flat_per_level = 2.0
+percent_per_level = 0.0
+base_cost = 20
+cost_growth = 1.15
+max_level = 0
+sort_order = 0
