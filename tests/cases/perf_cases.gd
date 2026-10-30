@@ -291,13 +291,15 @@ func _combat_round(game: Node, measure: bool) -> Dictionary:
 func _test_milestone_4_round(game: Node) -> void:
 	var first := await _milestone_4_round(game)
 	var before := _snapshot()
+	var census := _census()
 	var second := await _milestone_4_round(game)
 	var after := _snapshot()
+	var grew := _census_growth(census, _census())
 	check(first["shells"] > 12 and second["shells"] > 12 and second["summons"] > 0 and second["misses"] == 0,
 		"a Milestone 4 round is busy and spawns from the reserve: %d explosive shells, %d drones summoned (%d built new)" % [second["shells"], second["summons"], second["misses"]])
 	check(after["nodes"] == before["nodes"] and after["orphans"] == before["orphans"] and after["resources"] <= before["resources"]
 		and after["objects"] <= before["objects"] + OBJECT_SLACK,
-		"blasts, shields, summons and molten pools allocate nothing the second time (%d -> %d nodes, %d -> %d resources, %d -> %d objects)" % [before["nodes"], after["nodes"], before["resources"], after["resources"], before["objects"], after["objects"]])
+		"blasts, shields, summons and molten pools allocate nothing the second time (%d -> %d nodes, %d -> %d resources, %d -> %d objects%s)" % [before["nodes"], after["nodes"], before["resources"], after["resources"], before["objects"], after["objects"], "" if grew == "" else "; more in the tree: " + grew])
 
 
 func _milestone_4_round(game: Node) -> Dictionary:
@@ -336,6 +338,7 @@ func _milestone_4_round(game: Node) -> Dictionary:
 	await seconds(SETTLE_SECONDS)
 	game.projectiles.clear_all()
 	game.wave_runner.clear_enemies()
+	game._clear_drops() # the Foreman is a boss and always drops; the drop goes back to its reserve
 	await physics_frames(2)
 	return {"shells": shells, "summons": summons, "misses": game.wave_runner.reserve_misses - misses_before}
 
@@ -350,7 +353,9 @@ func _milestone_4_items() -> Dictionary:
 func _spawn(game: Node, definition_path: String, scene_path: String, distance: float, side: float) -> Enemy:
 	if not _definitions.has(definition_path):
 		var definition: EnemyDefinition = load(definition_path).duplicate()
+		# No drops: a kill's loot is the drop reserve's business, measured on its own above.
 		definition.loot_weight = 0.0
+		definition.rare_chance = 0.0
 		_definitions[definition_path] = definition
 	var player: Player = game.player
 	var forward := -player.global_basis.z
@@ -371,6 +376,30 @@ func _machine_speed() -> float:
 	var took := (Time.get_ticks_usec() - started) / 1000.0
 	print("PERF  calibration loop %.1f ms (reference %.1f ms, sink %.0f)" % [took, REFERENCE_CALIBRATION_MS, sink])
 	return clampf(took / REFERENCE_CALIBRATION_MS, 1.0, 3.0)
+
+
+## Nodes in the tree by parent path and class, so a failed count names what stayed behind.
+func _census() -> Dictionary:
+	var counts := {}
+	var stack: Array[Node] = [tree().root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		var key := "%s/%s" % [node.get_parent().name if node.get_parent() != null else "", node.get_class()]
+		counts[key] = int(counts.get(key, 0)) + 1
+		stack.append_array(node.get_children())
+	return counts
+
+
+func _census_growth(before: Dictionary, after: Dictionary) -> String:
+	var lines := PackedStringArray()
+	for key in after:
+		var change := int(after[key]) - int(before.get(key, 0))
+		if change != 0:
+			lines.append("%s %+d" % [key, change])
+	for key in before:
+		if not after.has(key):
+			lines.append("%s %+d" % [key, -int(before[key])])
+	return ", ".join(lines)
 
 
 func _snapshot() -> Dictionary:
