@@ -58,6 +58,8 @@ func release_all() -> void:
 	for role in _touches.values():
 		if role == &"jump":
 			Input.action_release("jump")
+		elif role == &"fire" and _player != null:
+			_player.pistol.release_fire()
 	_touches.clear()
 	_last_positions.clear()
 	_set_stick(Vector2.ZERO)
@@ -107,6 +109,8 @@ func _on_touch_up(index: int) -> void:
 		_set_stick(Vector2.ZERO)
 	elif role == &"jump":
 		Input.action_release("jump")
+	elif role == &"fire" and _player != null:
+		_player.pistol.release_fire()
 	_canvas.queue_redraw()
 
 

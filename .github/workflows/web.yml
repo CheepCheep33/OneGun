@@ -53,6 +53,15 @@ jobs:
       - name: Smoke test
         run: ~/godot/godot --headless --path . res://tests/smoke_test.tscn
 
+      - name: Reforge simulation (plan gate)
+        run: ~/godot/godot --headless --path . res://tests/reforge_sim.tscn
+
+      - name: GPU gate (shader compiles and uploads after the warm-up, software renderer)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends xvfb libgl1 libgl1-mesa-dri libxcursor1 libxinerama1 libxrandr2 libxi6 libxkbcommon0 libxext6 libxrender1 >/dev/null
+          tests/gpu_gate.sh ~/godot/godot
+
       - name: Export web build
         run: |
           mkdir -p build/web

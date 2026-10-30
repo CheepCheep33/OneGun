@@ -19,14 +19,36 @@ class Driver:
 	func _ready() -> void:
 		_run.call_deferred()
 
+	## Milestone 3 checks live in their own case scripts (tests/cases/), run through this driver.
+	const CASE_SCRIPTS: Array[Script] = [
+		preload("res://tests/cases/stats_cases.gd"),
+		preload("res://tests/cases/loot_cases.gd"),
+		preload("res://tests/cases/combat_cases.gd"),
+		preload("res://tests/cases/bench_cases.gd"),
+		preload("res://tests/cases/effects_cases.gd"),
+		preload("res://tests/cases/perf_cases.gd"),
+	]
+	var cases: Array[TestCase] = []
+
 	func _run() -> void:
+		var only := _only_case()
+		if only != "":
+			await _run_only(only)
+			return
 		await _test_settings_fallback()
 		Progression.reset()
+		check(not SaveFile.in_memory, "storage probe found writable user data")
 		_test_items_model()
 		_test_build_stats()
 		_test_shot_function()
 		_test_save_file()
 		_test_wave_lint()
+		for script in CASE_SCRIPTS:
+			var test_case: TestCase = script.new()
+			test_case.driver = self
+			cases.append(test_case)
+			await test_case.run_unit()
+		Progression.reset()
 		get_tree().change_scene_to_file("res://scenes/main.tscn")
 		var game := await _wait_for_main()
 		await _test_bench_start_state(game)
@@ -43,8 +65,41 @@ class Driver:
 		await _test_purchase(game)
 		await _test_death_and_retry(game)
 		await _test_persistence(game)
+		for test_case in cases:
+			await test_case.run_scene(game)
 		await _test_abandon(game)
 		print("\n%d checks, %d failed" % [checks, failures])
+		get_tree().quit(1 if failures > 0 else 0)
+
+	## `-- case=<name>` after the scene path runs one case script (by file name, "perf" matches
+	## perf_cases.gd) on the running game and nothing else, for quick iteration on that case.
+	func _only_case() -> String:
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("case="):
+				return arg.trim_prefix("case=")
+		return ""
+
+	func _run_only(name: String) -> void:
+		SaveFile.in_memory = true # never touch a developer's real save
+		Progression.data = SaveFile.fresh()
+		Progression._restore_loot_state()
+		for script in CASE_SCRIPTS:
+			if name in script.resource_path.get_file():
+				var test_case: TestCase = script.new()
+				test_case.driver = self
+				cases.append(test_case)
+		if cases.is_empty():
+			printerr("No case script matches '%s'" % name)
+			get_tree().quit(1)
+			return
+		for test_case in cases:
+			await test_case.run_unit()
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		var game := await _wait_for_main()
+		await seconds(0.5) # let the warm-up finish as it would behind a real first bench
+		for test_case in cases:
+			await test_case.run_scene(game)
+		print("\n%d checks, %d failed (case %s only)" % [checks, failures, name])
 		get_tree().quit(1 if failures > 0 else 0)
 
 	# ------------------------------------------------------------------ unit tests
@@ -127,7 +182,8 @@ class Driver:
 		check(crit.crit_chance == WeaponStats.CRIT_CHANCE_CAP, "crit chance is capped at 50 percent (%.2f)" % crit.crit_chance)
 		check(is_equal_approx(crit.crit_multiplier, 1.5 * 1.5), "crit damage affix scales the crit multiplier (%.2f)" % crit.crit_multiplier)
 		check(crit.extra.has("extra_pierce") and is_equal_approx(crit.extra["extra_pierce"]["flat"], 2.0), "modifiers for stats the pistol does not use yet land in extra")
-		check(with_item.sustained_dps() > 0.0 and with_item.shots_to_kill(40.0) == 3, "derived readouts work (%d shots to kill 40 hp)" % with_item.shots_to_kill(40.0))
+		# The readouts assume every ray lands: two rays of 14.88 (plus the crit expectation) kill 40 hp in 2.
+		check(with_item.sustained_dps() > 0.0 and with_item.shots_to_kill(40.0) == 2, "derived readouts count both rays (%d shots to kill 40 hp)" % with_item.shots_to_kill(40.0))
 		var equipped_unknown := WeaponStats.build(base, {}, {"barrel": {"base": "gone", "rarity": 0, "mark": 1, "affixes": []}})
 		check(equipped_unknown.damage == 10.0, "an equipped item with an unknown base contributes nothing")
 		Items.unregister(&"test_long_barrel")
@@ -166,7 +222,7 @@ class Driver:
 
 	func _test_save_file() -> void:
 		var fresh := SaveFile.fresh()
-		check(fresh["version"] == SaveFile.VERSION and fresh["credits"] == 0 and fresh["inventory"].is_empty(), "fresh save is version 2 and empty")
+		check(fresh["version"] == SaveFile.VERSION and fresh["credits"] == 0 and fresh["inventory"].is_empty(), "fresh save is version %d and empty" % SaveFile.VERSION)
 		_register_test_barrel()
 		var data := SaveFile.fresh()
 		data["credits"] = 123
@@ -192,7 +248,7 @@ class Driver:
 		# Version 1 (the original Milestone 2 spec) migrates.
 		var v1 := {"version": 1, "credits": 77, "upgrades": {"damage": 2, "magazine": 1}, "highest_wave": 2}
 		var migrated := SaveFile.migrate(v1)
-		check(migrated["version"] == 2 and migrated["credits"] == 77 and migrated["core_levels"]["damage"] == 2 and migrated["core_levels"]["magazine"] == 1, "version 1 save migrates its credits and levels")
+		check(migrated["version"] == SaveFile.VERSION and migrated["credits"] == 77 and migrated["core_levels"]["damage"] == 2 and migrated["core_levels"]["magazine"] == 1, "version 1 save migrates its credits and levels")
 		check(migrated["waves"]["highest_cleared"] == 2 and migrated["waves"]["first_clears"] == [1, 2] and migrated["inventory"].is_empty(), "version 1 save migrates its wave progress")
 		# Unknown version: fresh start, backup kept.
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SaveFile.BACKUP_PATH))
@@ -204,7 +260,7 @@ class Driver:
 		file.close()
 		check(SaveFile.load_or_fresh()["credits"] == 0, "corrupt save file starts fresh")
 		SaveFile.delete()
-		check(not FileAccess.file_exists(SaveFile.PATH) and SaveFile.load_or_fresh()["version"] == 2, "missing save file starts fresh")
+		check(not FileAccess.file_exists(SaveFile.PATH) and SaveFile.load_or_fresh()["version"] == SaveFile.VERSION, "missing save file starts fresh")
 		Items.unregister(&"test_long_barrel")
 		Progression.reset()
 
@@ -238,7 +294,7 @@ class Driver:
 		check(Input.mouse_mode == Input.MOUSE_MODE_VISIBLE, "mouse is free while the bench is open")
 		check(Progression.credits == 0 and Progression.next_wave() == 1, "new save starts with no credits at wave 1")
 		check(game.bench.selected_wave == 1 and game.bench._start_button.text == "START WAVE 1", "bench selects wave 1 for a new player")
-		check(game.bench._slot_grid.get_child_count() == 7, "bench shows all seven locked slots")
+		check(game.bench._slot_grid.get_child_count() == 7, "bench shows all seven slots")
 		var row: Dictionary = game.bench._core_rows[&"damage"]
 		check(row["button"].disabled and row["button"].text == "Buy  20 c", "damage upgrade shows its cost and cannot be bought with no credits")
 		check("10 dmg  →  12 dmg" in row["effect"].text, "damage row previews the next level (%s)" % row["effect"].text)
@@ -440,10 +496,10 @@ class Driver:
 		var enemies: Array = game.get_node("Enemies").get_children()
 		check(runner.active_count() == 3, "wave runner respects the alive cap (%d)" % runner.active_count())
 		var min_distance := INF
-		for enemy: Chaser in enemies:
+		for enemy: Enemy in enemies:
 			min_distance = minf(min_distance, enemy.global_position.distance_to(game.player.global_position))
 		check(min_distance >= runner.min_player_distance, "no enemy spawned near the player (closest %.1f m)" % min_distance)
-		var scaled: Chaser = enemies[0]
+		var scaled: Enemy = enemies[0]
 		check(is_equal_approx(scaled.health, scaled.definition.max_health * 1.6) and scaled.definition.display_name == "Runner", "tier scaling multiplies enemy health (%.0f hp runner)" % scaled.health)
 		var credits_before := Progression.credits
 		var reward: int = scaled.definition.credit_reward
@@ -475,7 +531,7 @@ class Driver:
 		game.wave_runner.remaining_changed.connect(func(remaining: int, _total: int) -> void: remaining_seen.append(remaining))
 		while not cleared[0] and elapsed < 40.0:
 			for enemy in game.get_node("Enemies").get_children():
-				if enemy is Chaser and enemy.is_alive and enemy.state != Chaser.State.SPAWNING:
+				if enemy is Enemy and enemy.is_alive and not enemy.is_spawning:
 					enemy.take_hit(10000.0, enemy.global_position, Vector3.FORWARD)
 					killed += 1
 			await physics_frames(3)
@@ -573,6 +629,7 @@ class Driver:
 		await physics_frames(2)
 		check(game.state == game.State.BENCH and game.bench.visible and not game.pause_menu.visible, "abandoning a wave returns to the bench")
 		check(not Progression.is_wave_cleared(2), "abandoning pays no completion bonus")
+		Progression.add_credits(10)
 		game.bench._on_reset_pressed()
 		check(Progression.credits > 0, "first reset click only asks for confirmation")
 		game.bench._on_reset_pressed()
@@ -580,7 +637,7 @@ class Driver:
 
 	# ------------------------------------------------------------------ helpers
 
-	func _spawn_in_front(game: Node, distance: float) -> Chaser:
+	func _spawn_in_front(game: Node, distance: float) -> Enemy:
 		var player: Player = game.player
 		var forward := -player.global_basis.z
 		forward.y = 0.0

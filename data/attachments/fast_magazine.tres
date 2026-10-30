@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="AttachmentDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/attachment_definition.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/weapons/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_1"]
+script = ExtResource("2_mod")
+stat = &"reload_speed"
+flat = 0.0
+percent = 0.30
+
+[sub_resource type="Resource" id="Mod_2"]
+script = ExtResource("2_mod")
+stat = &"magazine"
+flat = 0.0
+percent = -0.25
+
+[resource]
+script = ExtResource("1_def")
+id = &"fast_magazine"
+display_name = "Fast-mag"
+slot = &"magazine"
+description = "Changes a third faster and holds a quarter fewer rounds."
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1"), SubResource("Mod_2")])
+mark_scale = 0.15
+behaviours = {}
+is_default = false
+unlock_wave = 0
+gate_text = ""
+visual = {"grip_height": 0.8}

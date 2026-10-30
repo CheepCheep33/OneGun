@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="WaveDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/game/wave_definition.gd" id="1_wave"]
+[ext_resource type="Script" path="res://scripts/game/spawn_group.gd" id="2_group"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/chaser.tscn" id="scene_chaser"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/shooter.tscn" id="scene_shooter"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/swarm_drone.tscn" id="scene_swarm_drone"]
+[ext_resource type="Resource" path="res://data/enemies/shooter.tres" id="def_shooter"]
+[ext_resource type="Resource" path="res://data/enemies/runner.tres" id="def_runner"]
+[ext_resource type="Resource" path="res://data/enemies/swarm_drone.tres" id="def_swarm_drone"]
+
+[sub_resource type="Resource" id="Group_1"]
+script = ExtResource("2_group")
+enemy_scene = ExtResource("scene_shooter")
+definition = ExtResource("def_shooter")
+count = 6
+interval = 3.5
+start_delay = 1.0
+
+[sub_resource type="Resource" id="Group_2"]
+script = ExtResource("2_group")
+enemy_scene = ExtResource("scene_chaser")
+definition = ExtResource("def_runner")
+count = 8
+interval = 1.0
+start_delay = 6.0
+
+[sub_resource type="Resource" id="Group_3"]
+script = ExtResource("2_group")
+enemy_scene = ExtResource("scene_swarm_drone")
+definition = ExtResource("def_swarm_drone")
+count = 8
+interval = 0.4
+start_delay = 14.0
+
+[resource]
+script = ExtResource("1_wave")
+number = 8
+display_name = "Suppression"
+groups = Array[ExtResource("2_group")]([SubResource("Group_1"), SubResource("Group_2"), SubResource("Group_3")])
+max_alive = 8
+completion_bonus = 150
+is_boss_wave = false

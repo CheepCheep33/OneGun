@@ -1,0 +1,42 @@
+[gd_resource type="Resource" script_class="WaveDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/game/wave_definition.gd" id="1_wave"]
+[ext_resource type="Script" path="res://scripts/game/spawn_group.gd" id="2_group"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/chaser.tscn" id="scene_chaser"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/shooter.tscn" id="scene_shooter"]
+[ext_resource type="Resource" path="res://data/enemies/chaser.tres" id="def_chaser"]
+[ext_resource type="Resource" path="res://data/enemies/runner.tres" id="def_runner"]
+[ext_resource type="Resource" path="res://data/enemies/shooter.tres" id="def_shooter"]
+
+[sub_resource type="Resource" id="Group_1"]
+script = ExtResource("2_group")
+enemy_scene = ExtResource("scene_chaser")
+definition = ExtResource("def_chaser")
+count = 10
+interval = 1.4
+start_delay = 1.0
+
+[sub_resource type="Resource" id="Group_2"]
+script = ExtResource("2_group")
+enemy_scene = ExtResource("scene_chaser")
+definition = ExtResource("def_runner")
+count = 6
+interval = 1.2
+start_delay = 8.0
+
+[sub_resource type="Resource" id="Group_3"]
+script = ExtResource("2_group")
+enemy_scene = ExtResource("scene_shooter")
+definition = ExtResource("def_shooter")
+count = 4
+interval = 4.0
+start_delay = 5.0
+
+[resource]
+script = ExtResource("1_wave")
+number = 6
+display_name = "Second shift"
+groups = Array[ExtResource("2_group")]([SubResource("Group_1"), SubResource("Group_2"), SubResource("Group_3")])
+max_alive = 7
+completion_bonus = 110
+is_boss_wave = false

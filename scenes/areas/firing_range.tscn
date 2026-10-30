@@ -1,0 +1,147 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/areas/firing_range.gd" id="1_range"]
+[ext_resource type="Texture2D" path="res://assets/textures/placeholder_grid.png" id="2_grid"]
+
+[sub_resource type="StandardMaterial3D" id="Mat_floor"]
+resource_name = "placeholder_range_floor"
+albedo_color = Color(0.4, 0.44, 0.5, 1)
+albedo_texture = ExtResource("2_grid")
+roughness = 0.9
+uv1_scale = Vector3(0.5, 0.5, 0.5)
+uv1_triplanar = true
+uv1_world_triplanar = true
+
+[sub_resource type="StandardMaterial3D" id="Mat_wall"]
+resource_name = "placeholder_range_wall"
+albedo_color = Color(0.36, 0.4, 0.46, 1)
+albedo_texture = ExtResource("2_grid")
+roughness = 0.9
+uv1_scale = Vector3(0.5, 0.5, 0.5)
+uv1_triplanar = true
+uv1_world_triplanar = true
+
+[sub_resource type="StandardMaterial3D" id="Mat_block"]
+resource_name = "placeholder_range_block"
+albedo_color = Color(0.6, 0.56, 0.5, 1)
+albedo_texture = ExtResource("2_grid")
+roughness = 0.9
+uv1_scale = Vector3(0.5, 0.5, 0.5)
+uv1_triplanar = true
+uv1_world_triplanar = true
+
+[sub_resource type="BoxMesh" id="Mesh_Floor"]
+material = SubResource("Mat_floor")
+size = Vector3(32, 1, 48)
+
+[sub_resource type="BoxShape3D" id="Shape_Floor"]
+size = Vector3(32, 1, 48)
+
+[sub_resource type="BoxMesh" id="Mesh_WallNorth"]
+material = SubResource("Mat_wall")
+size = Vector3(32, 5, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_WallNorth"]
+size = Vector3(32, 5, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_WallSouth"]
+material = SubResource("Mat_wall")
+size = Vector3(32, 5, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_WallSouth"]
+size = Vector3(32, 5, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_WallWest"]
+material = SubResource("Mat_wall")
+size = Vector3(1, 5, 50)
+
+[sub_resource type="BoxShape3D" id="Shape_WallWest"]
+size = Vector3(1, 5, 50)
+
+[sub_resource type="BoxMesh" id="Mesh_WallEast"]
+material = SubResource("Mat_wall")
+size = Vector3(1, 5, 50)
+
+[sub_resource type="BoxShape3D" id="Shape_WallEast"]
+size = Vector3(1, 5, 50)
+
+[sub_resource type="BoxMesh" id="Mesh_Bench"]
+material = SubResource("Mat_block")
+size = Vector3(6, 1.0, 1.2)
+
+[sub_resource type="BoxShape3D" id="Shape_Bench"]
+size = Vector3(6, 1.0, 1.2)
+
+[node name="FiringRange" type="Node3D"]
+script = ExtResource("1_range")
+
+[node name="Floor" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("Mesh_Floor")
+
+[node name="Collision" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("Shape_Floor")
+
+[node name="WallNorth" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, -24.5)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Mesh" type="MeshInstance3D" parent="WallNorth"]
+mesh = SubResource("Mesh_WallNorth")
+
+[node name="Collision" type="CollisionShape3D" parent="WallNorth"]
+shape = SubResource("Shape_WallNorth")
+
+[node name="WallSouth" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 24.5)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Mesh" type="MeshInstance3D" parent="WallSouth"]
+mesh = SubResource("Mesh_WallSouth")
+
+[node name="Collision" type="CollisionShape3D" parent="WallSouth"]
+shape = SubResource("Shape_WallSouth")
+
+[node name="WallWest" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -16.5, 2.5, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Mesh" type="MeshInstance3D" parent="WallWest"]
+mesh = SubResource("Mesh_WallWest")
+
+[node name="Collision" type="CollisionShape3D" parent="WallWest"]
+shape = SubResource("Shape_WallWest")
+
+[node name="WallEast" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 16.5, 2.5, 0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Mesh" type="MeshInstance3D" parent="WallEast"]
+mesh = SubResource("Mesh_WallEast")
+
+[node name="Collision" type="CollisionShape3D" parent="WallEast"]
+shape = SubResource("Shape_WallEast")
+
+[node name="Bench" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 20.0)
+collision_layer = 1
+collision_mask = 0
+
+[node name="Mesh" type="MeshInstance3D" parent="Bench"]
+mesh = SubResource("Mesh_Bench")
+
+[node name="Collision" type="CollisionShape3D" parent="Bench"]
+shape = SubResource("Shape_Bench")
+
+[node name="Targets" type="Node3D" parent="."]
+
+[node name="PlayerStart" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 22)

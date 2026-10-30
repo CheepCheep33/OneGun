@@ -8,6 +8,7 @@ const SAVE_PATH := "user://settings.cfg"
 const MOUSE_SENSITIVITY_RANGE := Vector2(0.1, 5.0)
 const FIELD_OF_VIEW_RANGE := Vector2(60.0, 110.0)
 const CAMERA_RECOIL_RANGE := Vector2(0.0, 2.0)
+const RENDER_SCALE_RANGE := Vector2(0.5, 1.0)
 
 var mouse_sensitivity := 1.0
 var field_of_view := 80.0
@@ -15,9 +16,19 @@ var field_of_view := 80.0
 var camera_recoil := 1.0
 var show_damage_numbers := true
 var master_volume := 0.8
+## Video. The 3D view renders at this share of the window's pixels (the HUD stays sharp). On the
+## web the default matches the browser's CSS pixels, so a high-DPI screen does not quadruple the
+## GPU work; glow is off there too, since the browser build runs on one thread and a weak GPU.
+var render_scale := 1.0
+var shadows := true
+var glow := true
+var show_fps := false
 
 
 func _ready() -> void:
+	if OS.has_feature("web"):
+		glow = false
+		render_scale = clampf(1.0 / maxf(DisplayServer.screen_get_scale(), 1.0), RENDER_SCALE_RANGE.x, RENDER_SCALE_RANGE.y)
 	load_settings()
 
 
@@ -37,6 +48,10 @@ func load_settings() -> void:
 		camera_recoil = _read(cfg, "feedback", "camera_recoil", camera_recoil)
 		show_damage_numbers = _read(cfg, "feedback", "show_damage_numbers", show_damage_numbers)
 		master_volume = _read(cfg, "audio", "master_volume", master_volume)
+		render_scale = _read(cfg, "video", "render_scale", render_scale)
+		shadows = _read(cfg, "video", "shadows", shadows)
+		glow = _read(cfg, "video", "glow", glow)
+		show_fps = _read(cfg, "video", "show_fps", show_fps)
 	_clamp_all()
 	_apply_audio()
 	changed.emit()
@@ -49,6 +64,10 @@ func save_settings() -> void:
 	cfg.set_value("feedback", "camera_recoil", camera_recoil)
 	cfg.set_value("feedback", "show_damage_numbers", show_damage_numbers)
 	cfg.set_value("audio", "master_volume", master_volume)
+	cfg.set_value("video", "render_scale", render_scale)
+	cfg.set_value("video", "shadows", shadows)
+	cfg.set_value("video", "glow", glow)
+	cfg.set_value("video", "show_fps", show_fps)
 	var err := cfg.save(SAVE_PATH)
 	if err != OK:
 		push_warning("Could not save settings (error %d)." % err)
@@ -66,6 +85,7 @@ func _clamp_all() -> void:
 	field_of_view = clampf(field_of_view, FIELD_OF_VIEW_RANGE.x, FIELD_OF_VIEW_RANGE.y)
 	camera_recoil = clampf(camera_recoil, CAMERA_RECOIL_RANGE.x, CAMERA_RECOIL_RANGE.y)
 	master_volume = clampf(master_volume, 0.0, 1.0)
+	render_scale = clampf(render_scale, RENDER_SCALE_RANGE.x, RENDER_SCALE_RANGE.y)
 
 
 func _apply_audio() -> void:

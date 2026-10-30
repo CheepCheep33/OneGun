@@ -19,15 +19,27 @@ extends Resource
 @export var max_level := 0
 ## Order in the bench list.
 @export var sort_order := 0
+## True multiplies the flat amount per level by the Reforge tier's enemy health step, so
+## rebuying levels at a new tier costs the same share of income as before (plan: Reforge power budget).
+@export var scales_with_tier := false
 
 
 func cost_at(level: int) -> int:
 	return maxi(1, roundi(base_cost * pow(cost_growth, maxi(level, 0))))
 
 
+## Total cost of buying levels `from_level` (exclusive) up to `to_level` (inclusive).
+func cost_between(from_level: int, to_level: int) -> int:
+	var total := 0
+	for level in range(from_level, to_level):
+		total += cost_at(level)
+	return total
+
+
 func is_maxed(level: int) -> bool:
 	return max_level > 0 and level >= max_level
 
 
-func modifier_for(level: int) -> StatModifier:
-	return StatModifier.make(stat, flat_per_level * level, percent_per_level * level)
+func modifier_for(level: int, tier_scale := 1.0) -> StatModifier:
+	var flat := flat_per_level * level * (tier_scale if scales_with_tier else 1.0)
+	return StatModifier.make(stat, flat, percent_per_level * level)

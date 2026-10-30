@@ -1,6 +1,6 @@
 extends Node
-## Drives the real game through the bench, a wave, the cleared banner and the death screen, saving a
-## screenshot of each. Needs a window (use xvfb-run headlessly):
+## Drives the real game through the bench, waves, the Warden, the Firing Range, the cleared banner
+## and the death screen, saving a screenshot of each. Needs a window (use xvfb-run headlessly):
 ##   xvfb-run godot --path . --rendering-driver opengl3 res://tests/screenshot_tour.tscn -- out_dir=/tmp/shots
 ## A visual aid for review, not a test: it never fails.
 
@@ -24,7 +24,9 @@ class Tour:
 		_run.call_deferred()
 
 	func _run() -> void:
-		Progression.reset()
+		SaveFile.in_memory = true # never touch a developer's real save
+		Progression.data = SaveFile.fresh()
+		Progression._restore_loot_state()
 		get_tree().change_scene_to_file("res://scenes/main.tscn")
 		var game: Node = null
 		for i in 300:
@@ -36,39 +38,92 @@ class Tour:
 		await _frames(10)
 		await _shot("01_bench_new_player")
 
-		# Pretend wave 1 was cleared with some credits so the bench has something to sell.
-		Progression.add_credits(36)
-		Progression.record_wave_cleared(1, 25, 42.0)
+		# A returning player: a few waves cleared, drops in the inventory, one fitted.
+		Progression.add_credits(140)
+		for wave in [1, 2, 3]:
+			Progression.record_wave_cleared(wave, 0, 42.0)
+		var long_barrel := Items.make(&"long_barrel", Items.Rarity.UNCOMMON, [{"id": "sharp", "roll": 0.8}])
+		Progression.add_item(long_barrel, "tour")
+		Progression.equip(int(long_barrel["uid"]))
+		Progression.add_item(Items.make(&"fast_magazine"), "tour")
+		Progression.add_item(Items.make(&"penetrator_barrel", Items.Rarity.RARE, [{"id": "rapid", "roll": 0.5}, {"id": "keen", "roll": 0.9}]), "tour")
+		Progression.add_item(Items.make(&"extended_magazine", Items.Rarity.UNCOMMON, [{"id": "quick", "roll": 0.3}]), "tour")
 		game.bench.open()
 		await _frames(3)
-		await _shot("02_bench_after_wave_1")
+		game.bench.select_item(int(Progression.inventory()[1]["uid"]))
+		await _frames(2)
+		await _shot("02_bench_gunsmith_compare")
+
+		# Wave 4: shooters and a floor drop with its beam, with the FPS readout on.
+		Settings.set_value(&"show_fps", true)
+		game.start_wave(4)
+		await _frames(5)
+		await _seconds(7.0)
+		var shooter: Enemy = game.wave_runner.spawn_at(game.player.global_position + -game.player.global_basis.z * 9.0 + Vector3.RIGHT * 2.0,
+			load("res://data/enemies/shooter.tres"), load("res://scenes/enemies/shooter.tscn"))
+		game._spawn_drop(Items.make(&"long_barrel", Items.Rarity.UNCOMMON, [{"id": "sharp", "roll": 0.5}]),
+			game.player.global_position + -game.player.global_basis.z * 4.0 + Vector3.LEFT * 1.5)
+		await _seconds(1.2)
+		if is_instance_valid(shooter) and shooter.is_alive:
+			shooter._enter(Shooter.Phase.AIM)
+		game.player.pistol.request_fire()
+		await _frames(2)
+		await _shot("03_wave_4_shooter_and_drop")
+
+		# The Warden with its boss bar and slam ring.
+		game.open_bench()
+		await _frames(2)
+		Progression.record_wave_cleared(4, 0, 30.0)
+		game.start_wave(5)
+		await _frames(5)
+		var warden: Enemy = game.wave_runner.spawn_at(game.player.global_position + -game.player.global_basis.z * 6.0,
+			load("res://data/enemies/warden.tres"), load("res://scenes/enemies/warden.tscn"))
+		await _seconds(Enemy.SPAWN_TIME + 0.2)
+		warden.take_hit(120.0, warden.global_position, Vector3.FORWARD)
+		warden._charge_cooldown = 99.0
+		warden._slam_cooldown = 0.0
+		warden._enter(Warden.Phase.SLAM_TELEGRAPH)
+		warden._ring.visible = true
+		await _seconds(0.6)
+		await _shot("04_warden_slam_telegraph")
+
+		game.wave_runner.stop()
+		game.wave_runner.clear_enemies()
+		game.hud.hide_boss()
+		await _frames(2)
+		game.hud.show_wave_cleared(5, 240, true, long_barrel)
+		await _frames(3)
+		await _shot("05_wave_cleared_banner")
+		game.hud._banner.visible = false
+
+		# The Firing Range: dummies with readouts and the gallery plates.
+		game.open_bench()
+		await _frames(2)
+		game.enter_area("firing_range")
+		await _frames(6)
+		game.player.pistol.request_fire()
+		await _frames(3)
+		await _shot("06_firing_range")
+
+		Settings.set_value(&"show_fps", false)
+		game.pause()
+		await _frames(3)
+		await _shot("07_pause_in_range")
+		game.abandon_wave()
+		await _frames(4)
+
+		# The overflow tray after a lucky run.
+		for i in Progression.INVENTORY_SIZE + 3:
+			Progression.add_item(Items.make(&"fast_magazine"), "tour")
+		game.bench.open()
+		await _frames(3)
+		await _shot("08_bench_overflow_tray")
 
 		game.start_wave(2)
 		await _frames(5)
-		# Let a few enemies spawn and walk in, then freeze the moment.
-		await _seconds(6.0)
-		game.player.pistol.request_fire()
-		await _frames(2)
-		await _shot("03_wave_2_combat")
-
-		game.wave_runner.stop()
-		for enemy in game.get_node("Enemies").get_children():
-			if enemy is Chaser and enemy.is_alive:
-				enemy.take_hit(10000.0, enemy.global_position, Vector3.FORWARD)
-		await _frames(2)
-		game.hud.show_wave_cleared(2, 40, true)
-		await _frames(3)
-		await _shot("04_wave_cleared_banner")
-		game.hud._banner.visible = false
-
 		game.player.take_damage(10000.0)
 		await _frames(3)
-		await _shot("05_death_screen")
-
-		game.open_bench()
-		await _frames(3)
-		await _shot("06_bench_returning")
-		Progression.reset()
+		await _shot("09_death_screen")
 		get_tree().quit(0)
 
 

@@ -7,6 +7,6 @@ script = ExtResource("1_def")
 id = &"underbarrel"
 display_name = "Underbarrel"
 summary = "Alternate fire and stability"
-gate_text = "Opens after wave 10"
+gate_text = "Opens after the wave 10 boss"
 unlock_wave = 10
 sort_order = 6

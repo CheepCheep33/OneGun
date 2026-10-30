@@ -14,3 +14,4 @@ base_cost = 20
 cost_growth = 1.15
 max_level = 0
 sort_order = 0
+scales_with_tier = true

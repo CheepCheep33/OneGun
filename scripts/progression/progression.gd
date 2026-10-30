@@ -1,24 +1,37 @@
 extends Node
 ## Everything that outlives a wave, autoloaded as `Progression`: credits, core tuning levels,
-## wave progress, the inventory and equipped build (empty until Milestone 3), and the save file.
-## Rewards commit the moment they are earned; the bench is the only place that writes the save.
+## wave progress, the inventory, overflow tray and equipped build, crafting parts, the seeded loot
+## stream, and the save file. Rewards commit the moment they are earned; the bench is the only
+## place that writes the save.
 
 signal credits_changed(credits: int)
 signal core_level_changed(id: StringName, level: int)
 signal progress_changed
+## The inventory, overflow tray, equipped build or parts changed.
+signal inventory_changed
+## An item arrived. `destination` is "inventory", "overflow", "dismantled" (both full, turned to
+## parts) or "bumped" (it took a lesser item's place in the tray).
+signal item_received(item: Dictionary, destination: String)
 
 const PISTOL_BASE := preload("res://data/weapons/pistol_base.tres")
-## Per-kill credits, experience and health step up by this much per wave tier (5 waves each).
+## Per-kill credits and enemy health step up by this much per wave tier (5 waves each).
 const TIER_STEP := 1.6
 const WAVES_PER_TIER := 5
+const INVENTORY_SIZE := 40
+const OVERFLOW_SIZE := 20
+## Side areas and the wave whose first clear opens them.
+const AREA_GATES := {"firing_range": 2}
 
 var data: Dictionary = SaveFile.fresh()
 ## True when a save existed when the game started, so the bench can greet a returning player.
 var loaded_from_disk := false
+## Seeded from the save so a bug report with a seed reproduces its drops (plan: determinism).
+var loot_rng := RandomNumberGenerator.new()
 var _purchases_this_session := 0
 
 
 func _ready() -> void:
+	SaveFile.probe_storage()
 	load_from_disk()
 
 
@@ -80,16 +93,31 @@ func buy_core(id: StringName) -> bool:
 
 # ------------------------------------------------------------------ build
 
+var tier: int:
+	get:
+		return int(data["tier"])
+
+
 ## The current build stats: the single source of truth for combat, the bench and the HUD.
 func build_stats() -> WeaponStats:
-	return WeaponStats.build(PISTOL_BASE, data["core_levels"], data["equipped"], data["skills"], {})
+	return WeaponStats.build(PISTOL_BASE, data["core_levels"], data["equipped"], data["skills"], {}, tier)
 
 
 ## Build stats with one more level of a core stat, for the bench preview.
 func preview_core(id: StringName) -> WeaponStats:
 	var levels: Dictionary = data["core_levels"].duplicate()
 	levels[String(id)] = core_level(id) + 1
-	return WeaponStats.build(PISTOL_BASE, levels, data["equipped"], data["skills"], {})
+	return WeaponStats.build(PISTOL_BASE, levels, data["equipped"], data["skills"], {}, tier)
+
+
+## Build stats with `item` in its slot (or the slot emptied when item is null), for the compare view.
+func preview_equipped(slot: StringName, item: Variant) -> WeaponStats:
+	var equipped: Dictionary = data["equipped"].duplicate()
+	if item is Dictionary:
+		equipped[String(slot)] = item
+	else:
+		equipped.erase(String(slot))
+	return WeaponStats.build(PISTOL_BASE, data["core_levels"], equipped, data["skills"], {}, tier)
 
 
 # ------------------------------------------------------------------ waves
@@ -119,7 +147,13 @@ static func tier_of_wave(wave: int) -> int:
 
 ## Multiplier for per-kill credits and enemy health at a wave, from the wave tier and Reforge tier.
 func reward_multiplier(wave: int) -> float:
-	return pow(TIER_STEP, tier_of_wave(wave)) * pow(2.5, int(data["tier"]))
+	return pow(TIER_STEP, tier_of_wave(wave)) * bonus_multiplier()
+
+
+## Completion bonuses scale with the Reforge tier only, so they stay worth about three waves of
+## kill income at every tier.
+func bonus_multiplier() -> float:
+	return pow(WeaponStats.REFORGE_STEP, tier)
 
 
 func record_kill(credits_paid: int) -> void:
@@ -127,8 +161,8 @@ func record_kill(credits_paid: int) -> void:
 	add_credits(credits_paid)
 
 
-## Pays the completion bonus and marks the wave. Pays the same on replay (the plan's replay rule);
-## first clears are tracked for loot rules that arrive with Milestone 3. Returns whether it was a first clear.
+## Pays the completion bonus and marks the wave. Pays the same on replay (the plan's replay rule).
+## Returns whether it was a first clear, which decides the guaranteed loot.
 func record_wave_cleared(wave: int, bonus: int, duration: float) -> bool:
 	var first := not is_wave_cleared(wave)
 	if first:
@@ -147,6 +181,279 @@ func record_death(wave: int, duration: float) -> void:
 	progress_changed.emit()
 
 
+# ------------------------------------------------------------------ unlocks
+
+## A slot is open once its gate wave has been cleared (0 = open from the start).
+func is_slot_open(slot_id: StringName) -> bool:
+	var slot := Items.get_slot(slot_id)
+	return slot != null and (slot.unlock_wave <= 0 or is_wave_cleared(slot.unlock_wave))
+
+
+## A base is unlocked once its slot is open and its own gate wave (if any) has been cleared.
+func is_base_unlocked(base: AttachmentDefinition) -> bool:
+	if base == null or not is_slot_open(base.slot):
+		return false
+	return base.unlock_wave <= 0 or is_wave_cleared(base.unlock_wave)
+
+
+## The bases loot can roll right now: non-default, unlocked, optionally limited to one slot.
+func droppable_bases(slot: StringName = &"") -> Array[AttachmentDefinition]:
+	var result: Array[AttachmentDefinition] = []
+	for base in Items.all_attachments():
+		if base.is_default or (slot != &"" and base.slot != slot):
+			continue
+		if is_base_unlocked(base):
+			result.append(base)
+	return result
+
+
+func is_area_open(area_id: String) -> bool:
+	return AREA_GATES.has(area_id) and is_wave_cleared(int(AREA_GATES[area_id]))
+
+
+# ------------------------------------------------------------------ inventory
+
+func inventory() -> Array:
+	return data["inventory"]
+
+
+func overflow() -> Array:
+	return data["overflow"]
+
+
+func equipped() -> Dictionary:
+	return data["equipped"]
+
+
+func equipped_in(slot_id: StringName) -> Variant:
+	return data["equipped"].get(String(slot_id))
+
+
+func parts() -> Dictionary:
+	return data["parts"]
+
+
+func has_overflow() -> bool:
+	return not data["overflow"].is_empty()
+
+
+## Where an item lives: {"where": "inventory" | "overflow" | "equipped", "list", "index", "item"},
+## or an empty dictionary.
+func locate(uid: int) -> Dictionary:
+	for list_name in ["inventory", "overflow"]:
+		var index := Items.find_by_uid(data[list_name], uid)
+		if index >= 0:
+			return {"where": list_name, "list": data[list_name], "index": index, "item": data[list_name][index]}
+	for slot in data["equipped"]:
+		if int(data["equipped"][slot].get("uid", -1)) == uid:
+			return {"where": "equipped", "list": null, "index": -1, "item": data["equipped"][slot], "slot": slot}
+	return {}
+
+
+## Takes a dropped or granted item in (plan: Inventory). Returns where it went.
+func add_item(item: Dictionary, source := "") -> String:
+	var destination := "inventory"
+	if data["inventory"].size() < INVENTORY_SIZE:
+		data["inventory"].append(item)
+	elif data["overflow"].size() < OVERFLOW_SIZE:
+		data["overflow"].append(item)
+		destination = "overflow"
+	else:
+		# Both full: Commons and Uncommons become parts; rarer drops bump the oldest lesser item.
+		var victim := _bump_candidate(int(item.get("rarity", 0)))
+		if int(item.get("rarity", 0)) > Items.Rarity.UNCOMMON and victim >= 0:
+			_add_parts(Items.parts_for_rarity(int(data["overflow"][victim].get("rarity", 0))))
+			data["overflow"].remove_at(victim)
+			data["overflow"].append(item)
+			destination = "bumped"
+		else:
+			_add_parts(Items.parts_for_rarity(int(item.get("rarity", 0))))
+			data["records"]["dismantled"] = int(data["records"]["dismantled"]) + 1
+			destination = "dismantled"
+	if destination != "dismantled":
+		data["records"]["pickups"] = int(data["records"]["pickups"]) + 1
+	PlaytestLog.event("item", {"base": item.get("base", ""), "rarity": item.get("rarity", 0),
+		"to": destination, "source": source})
+	inventory_changed.emit()
+	item_received.emit(item, destination)
+	return destination
+
+
+## Index of the oldest unlocked tray item of the lowest rarity below `rarity`, or -1.
+func _bump_candidate(rarity: int) -> int:
+	var best := -1
+	for i in data["overflow"].size():
+		var candidate: Dictionary = data["overflow"][i]
+		if bool(candidate.get("locked", false)) or int(candidate.get("rarity", 0)) >= rarity:
+			continue
+		if best < 0 or int(candidate.get("rarity", 0)) < int(data["overflow"][best].get("rarity", 0)):
+			best = i
+	return best
+
+
+## Fits an item from the inventory or tray into its slot. The item it replaces takes its place.
+func equip(uid: int) -> bool:
+	var found := locate(uid)
+	if found.is_empty() or found["where"] == "equipped":
+		return false
+	var item: Dictionary = found["item"]
+	var base := Items.get_attachment(item.get("base", ""))
+	if base == null or not is_base_unlocked(base):
+		return false
+	var slot := String(base.slot)
+	var list: Array = found["list"]
+	list.remove_at(found["index"])
+	var previous: Variant = data["equipped"].get(slot)
+	if previous is Dictionary:
+		list.insert(found["index"], previous)
+	data["equipped"][slot] = item
+	PlaytestLog.event("equip", {"slot": slot, "base": item.get("base", ""), "rarity": item.get("rarity", 0)})
+	inventory_changed.emit()
+	return true
+
+
+## Puts the slot's attachment back in the inventory (or the tray). False when both are full.
+func unequip(slot_id: StringName) -> bool:
+	var slot := String(slot_id)
+	var item: Variant = data["equipped"].get(slot)
+	if not (item is Dictionary):
+		return false
+	if data["inventory"].size() < INVENTORY_SIZE:
+		data["inventory"].append(item)
+	elif data["overflow"].size() < OVERFLOW_SIZE:
+		data["overflow"].append(item)
+	else:
+		return false
+	data["equipped"].erase(slot)
+	PlaytestLog.event("unequip", {"slot": slot, "base": item.get("base", "")})
+	inventory_changed.emit()
+	return true
+
+
+func set_locked(uid: int, value: bool) -> bool:
+	var found := locate(uid)
+	if found.is_empty():
+		return false
+	found["item"]["locked"] = value
+	inventory_changed.emit()
+	return true
+
+
+## Turns an unlocked, unequipped item into parts.
+func dismantle(uid: int) -> bool:
+	var found := locate(uid)
+	if found.is_empty() or found["where"] == "equipped" or bool(found["item"].get("locked", false)):
+		return false
+	var item: Dictionary = found["item"]
+	found["list"].remove_at(found["index"])
+	_add_parts(Items.parts_for_rarity(int(item.get("rarity", 0))))
+	data["records"]["dismantled"] = int(data["records"]["dismantled"]) + 1
+	PlaytestLog.event("dismantle", {"base": item.get("base", ""), "rarity": item.get("rarity", 0)})
+	inventory_changed.emit()
+	return true
+
+
+## The one-click tidy: every unlocked Common in the inventory and tray becomes Scrap.
+func dismantle_unlocked_commons() -> int:
+	var count := 0
+	for list_name in ["inventory", "overflow"]:
+		var kept := []
+		for item in data[list_name]:
+			if int(item.get("rarity", 0)) == Items.Rarity.COMMON and not bool(item.get("locked", false)):
+				_add_parts(Items.parts_for_rarity(Items.Rarity.COMMON))
+				count += 1
+			else:
+				kept.append(item)
+		data[list_name].assign(kept)
+	if count > 0:
+		data["records"]["dismantled"] = int(data["records"]["dismantled"]) + count
+		PlaytestLog.event("dismantle_commons", {"count": count})
+		inventory_changed.emit()
+	return count
+
+
+## Moves a tray item into the inventory when there is room.
+func move_to_inventory(uid: int) -> bool:
+	var index := Items.find_by_uid(data["overflow"], uid)
+	if index < 0 or data["inventory"].size() >= INVENTORY_SIZE:
+		return false
+	data["inventory"].append(data["overflow"][index])
+	data["overflow"].remove_at(index)
+	inventory_changed.emit()
+	return true
+
+
+func _add_parts(amounts: Dictionary) -> void:
+	for part in amounts:
+		if data["parts"].has(part):
+			data["parts"][part] = int(data["parts"][part]) + int(amounts[part])
+
+
+# ------------------------------------------------------------------ loot
+
+## Rolls one kill's drop from the seeded loot stream. Empty when nothing drops.
+func roll_kill_drop(definition: EnemyDefinition, is_replay: bool) -> Dictionary:
+	var item := Loot.roll_kill_drop(definition, droppable_bases(), loot_rng, is_replay)
+	_store_loot_state()
+	if not item.is_empty():
+		data["records"]["drops"] = int(data["records"]["drops"]) + 1
+	return item
+
+
+## Makes an item of a random droppable base (optionally of one slot) at a rarity and takes it in.
+## Empty when no base can drop yet.
+func grant_item(rarity: int, slot: StringName = &"", source := "grant") -> Dictionary:
+	var bases := droppable_bases(slot)
+	if bases.is_empty():
+		return {}
+	var item := Loot.make_item(Loot.pick_base(bases, loot_rng), rarity, loot_rng)
+	_store_loot_state()
+	data["records"]["drops"] = int(data["records"]["drops"]) + 1
+	add_item(item, source)
+	return item
+
+
+func _store_loot_state() -> void:
+	data["loot_state"] = str(loot_rng.state)
+
+
+func _restore_loot_state() -> void:
+	var state := String(data.get("loot_state", ""))
+	if state.is_empty() or not state.is_valid_int():
+		loot_rng.seed = int(data["seed"])
+	else:
+		loot_rng.state = state.to_int()
+
+
+# ------------------------------------------------------------------ firing range
+
+func range_state() -> Dictionary:
+	return data["range"]
+
+
+func set_range_slot(slot_id: StringName) -> void:
+	if Items.SLOT_IDS.has(slot_id):
+		data["range"]["chosen_slot"] = String(slot_id)
+
+
+## Records a gallery time. Returns {"best": bool, "reward": item or {}}: the first run under par
+## grants a guaranteed Uncommon of the chosen slot (plan: Firing Range).
+func record_range_time(seconds: float, par: float) -> Dictionary:
+	var result := {"best": false, "reward": {}}
+	var best := float(data["range"]["best_time"])
+	if best <= 0.0 or seconds < best:
+		data["range"]["best_time"] = seconds
+		result["best"] = true
+	if seconds <= par and not bool(data["range"]["par_rewarded"]):
+		var reward := grant_item(Items.Rarity.UNCOMMON, StringName(String(data["range"]["chosen_slot"])), "range_par")
+		if not reward.is_empty():
+			data["range"]["par_rewarded"] = true
+			result["reward"] = reward
+	PlaytestLog.event("range_time", {"seconds": "%.2f" % seconds, "par": par, "best": result["best"]})
+	progress_changed.emit()
+	return result
+
+
 # ------------------------------------------------------------------ save
 
 func save() -> bool:
@@ -154,9 +461,11 @@ func save() -> bool:
 
 
 func load_from_disk() -> void:
-	loaded_from_disk = FileAccess.file_exists(SaveFile.PATH)
+	loaded_from_disk = SaveFile.exists()
 	data = SaveFile.load_or_fresh()
+	_restore_loot_state()
 	credits_changed.emit(credits)
+	inventory_changed.emit()
 	progress_changed.emit()
 
 
@@ -165,5 +474,7 @@ func reset() -> void:
 	data = SaveFile.fresh()
 	loaded_from_disk = false
 	SaveFile.delete()
+	_restore_loot_state()
 	credits_changed.emit(credits)
+	inventory_changed.emit()
 	progress_changed.emit()
