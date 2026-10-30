@@ -8,7 +8,13 @@ signal bench_requested
 
 const LOW_AMMO_FRACTION := 0.3
 const PICKUP_NOTE_TIME := 3.2
+const PICKUP_NOTE_FADE := 0.5
 const MAX_PICKUP_NOTES := 4
+## Font and outline sizes of every text that changes during play, for warm_up_text: the first glyph
+## at a new size allocates a font atlas page and each new glyph re-uploads it, which the browser
+## would otherwise do at the first pickup, boss, banner or death.
+const WARM_UP_TEXT_STYLES := [[15, 4], [16, 5], [17, 0], [18, 6], [20, 0], [20, 6], [22, 0], [22, 6], [28, 8], [30, 8], [44, 8], [54, 10], [64, 10]]
+const WARM_UP_TEXT := "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG the quick brown fox jumps over the lazy dog 0123456789 / + - · → ( ) % , . : ! ' ms fps left"
 
 const FPS_WINDOW := 0.5
 
@@ -20,6 +26,9 @@ var _reload_total := 0.0
 var _reload_elapsed := 0.0
 var _credit_pop: Tween
 var _banner_tween: Tween
+## The pickup notes, built once (MAX_PICKUP_NOTES) and reused; a note's age is -1 while hidden.
+var _notes: Array[Label] = []
+var _note_ages: Array[float] = []
 
 @onready var _vignette: ColorRect = $DamageVignette
 @onready var _crosshair: Control = $Crosshair
@@ -58,6 +67,16 @@ func _ready() -> void:
 	_credit_gain_label.modulate.a = 0.0
 	_fps_label.visible = false
 	%BenchButton.pressed.connect(func() -> void: bench_requested.emit())
+	for i in MAX_PICKUP_NOTES:
+		var note := Label.new()
+		note.add_theme_font_size_override("font_size", 18)
+		note.add_theme_color_override("font_outline_color", Color.BLACK)
+		note.add_theme_constant_override("outline_size", 6)
+		note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		note.visible = false
+		_pickup_notes.add_child(note)
+		_notes.append(note)
+		_note_ages.append(-1.0)
 
 
 func _process(delta: float) -> void:
@@ -76,6 +95,35 @@ func _process(delta: float) -> void:
 	if _reload_bar.visible:
 		_reload_elapsed += delta
 		_reload_bar.value = clampf(_reload_elapsed / _reload_total, 0.0, 1.0)
+	for i in _notes.size():
+		if _note_ages[i] < 0.0:
+			continue
+		_note_ages[i] += delta
+		if _note_ages[i] >= PICKUP_NOTE_TIME + PICKUP_NOTE_FADE:
+			_note_ages[i] = -1.0
+			_notes[i].visible = false
+		elif _note_ages[i] > PICKUP_NOTE_TIME:
+			_notes[i].modulate.a = 1.0 - (_note_ages[i] - PICKUP_NOTE_TIME) / PICKUP_NOTE_FADE
+
+
+## Draws every size of text the HUD shows during play once, invisibly, so the font atlas pages
+## exist and hold the glyphs before the first wave (GAME_PLAN.md, "Performance budget").
+func warm_up_text() -> void:
+	var labels: Array[Label] = []
+	for style in WARM_UP_TEXT_STYLES:
+		var label := Label.new()
+		label.text = WARM_UP_TEXT
+		label.add_theme_font_size_override("font_size", int(style[0]))
+		label.add_theme_constant_override("outline_size", int(style[1]))
+		label.add_theme_color_override("font_outline_color", Color.BLACK)
+		label.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(label)
+		labels.append(label)
+	for i in 3:
+		await get_tree().process_frame
+	for label in labels:
+		label.queue_free()
 
 
 ## The frame-rate readout (pause menu: Show FPS). Shows the average and the worst frame of each
@@ -171,8 +219,9 @@ func set_combat_visible(value: bool) -> void:
 	if not value:
 		_banner.visible = false
 		_reload_bar.visible = false
-		for note in _pickup_notes.get_children():
-			note.queue_free()
+		for i in _notes.size():
+			_note_ages[i] = -1.0
+			_notes[i].visible = false
 
 
 # ------------------------------------------------------------------ boss bar
@@ -198,7 +247,8 @@ func is_boss_bar_visible() -> bool:
 
 # ------------------------------------------------------------------ loot notes
 
-## One line per item that arrived, coloured by rarity, fading after a few seconds.
+## One line per item that arrived, coloured by rarity, fading after a few seconds. Notes are a
+## fixed set of labels reused in turn (nothing is built or freed mid-wave); the newest sits lowest.
 func show_pickup(item: Dictionary, destination: String) -> void:
 	var text := "%s  ·  %s" % [Items.display_name(item), Items.rarity_name(item)]
 	match destination:
@@ -208,25 +258,32 @@ func show_pickup(item: Dictionary, destination: String) -> void:
 			text += "  →  inventory full, turned to parts"
 		"bumped":
 			text += "  →  tray (a lesser item became parts)"
-	var note := Label.new()
+	var index := -1
+	var oldest := 0
+	for i in _notes.size():
+		if _note_ages[i] < 0.0:
+			index = i
+			break
+		if _note_ages[i] > _note_ages[oldest]:
+			oldest = i
+	if index == -1:
+		index = oldest
+	var note := _notes[index]
 	note.text = text
-	note.add_theme_font_size_override("font_size", 18)
-	note.add_theme_color_override("font_outline_color", Color.BLACK)
-	note.add_theme_constant_override("outline_size", 6)
 	note.add_theme_color_override("font_color", Items.rarity_color(item))
-	_pickup_notes.add_child(note)
-	while _pickup_notes.get_child_count() > MAX_PICKUP_NOTES:
-		var oldest := _pickup_notes.get_child(0)
-		_pickup_notes.remove_child(oldest)
-		oldest.queue_free()
+	note.modulate.a = 1.0
+	note.visible = true
+	_note_ages[index] = 0.0
+	_pickup_notes.move_child(note, _pickup_notes.get_child_count() - 1)
 	_pickup_sound.play()
-	var tween := note.create_tween()
-	tween.tween_property(note, "modulate:a", 0.0, 0.5).set_delay(PICKUP_NOTE_TIME)
-	tween.tween_callback(note.queue_free)
 
 
 func pickup_note_count() -> int:
-	return _pickup_notes.get_child_count()
+	var count := 0
+	for age in _note_ages:
+		if age >= 0.0:
+			count += 1
+	return count
 
 
 # ------------------------------------------------------------------ banners

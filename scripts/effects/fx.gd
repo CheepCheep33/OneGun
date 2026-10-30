@@ -48,11 +48,34 @@ static func sound_at(context: Node, stream: AudioStream, position: Vector3, volu
 		pool.sound_at(stream, position, volume_db, pitch)
 
 
-## Compiles every effect, projectile, enemy and drop shader before the first wave (see FxPool.warm_up).
-static func warm_up(context: Node, camera: Camera3D) -> void:
+## A name tag that follows `owner` (a floor drop) until detach_label or the owner leaves the tree.
+static func attach_label(context: Node, owner: Node3D, offset: Vector3, text: String, color: Color) -> void:
 	var pool := _pool(context)
 	if pool:
-		await pool.warm_up(camera)
+		pool.attach_label(owner, offset, text, color)
+
+
+static func detach_label(context: Node, owner: Node3D) -> void:
+	var pool := _pool(context)
+	if pool:
+		pool.detach_label(owner)
+
+
+## Compiles every effect, projectile, enemy and drop shader before the first wave, lit by the gun's
+## muzzle light and unlit, and puts the 2D labels under `label_parent`, the HUD's canvas layer
+## (see FxPool.warm_up).
+static func warm_up(context: Node, camera: Camera3D, gun: Pistol = null, label_parent: Node = null) -> void:
+	var pool := _pool(context)
+	if pool:
+		await pool.warm_up(camera, gun, label_parent)
+
+
+## Draws the current view with the muzzle light on for a couple of frames: for a freshly loaded
+## area, whose materials have not met the light yet (see FxPool.warm_up_lighting).
+static func warm_up_lighting(context: Node, gun: Pistol) -> void:
+	var pool := _pool(context)
+	if pool:
+		await pool.warm_up_lighting(gun)
 
 
 ## The running scene's pool, made on first use. Null when there is no scene to put it in.

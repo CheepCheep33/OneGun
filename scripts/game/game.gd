@@ -11,6 +11,8 @@ const CLEARED_BANNER_TIME := 2.6
 const MAIN_ARENA := preload("res://scenes/arena/arena.tscn")
 const AREA_SCENES := {"firing_range": "res://scenes/areas/firing_range.tscn"}
 const AREA_NAMES := {"firing_range": "Firing Range"}
+## Drop nodes kept ready outside the tree, so a drop landing mid-wave builds nothing.
+const DROP_RESERVE := 12
 
 var state := State.BENCH
 var current_wave := 0
@@ -26,6 +28,9 @@ var _had_control := false
 var _combat_started := false
 var _pending_wave: WaveDefinition
 var _boss: Enemy
+var _drop_reserve: Array[LootDrop] = []
+## Drops built by _spawn_drop because the reserve was empty (the performance gate expects zero).
+var drop_reserve_misses := 0
 
 @onready var arena: Node3D = $Arena
 @onready var player: Player = $Player
@@ -69,10 +74,13 @@ func _ready() -> void:
 	Progression.item_received.connect(_on_item_received)
 	Settings.changed.connect(_apply_video_settings)
 	_apply_video_settings()
-	# Compile the effect, enemy and drop shaders and build the enemy reserve behind the first bench,
-	# not in the first wave (GAME_PLAN.md, "Performance budget").
-	Fx.warm_up(self, player.camera)
+	# Compile the effect, enemy and drop shaders (lit by the muzzle light and unlit) and build the
+	# enemy and drop reserves behind the first bench, not in the first wave (GAME_PLAN.md,
+	# "Performance budget").
+	Fx.warm_up(self, player.camera, player.pistol, hud)
+	hud.warm_up_text()
 	wave_runner.warm_up()
+	_fill_drop_reserve()
 
 	hud.set_health(player.health, player.max_health)
 	hud.set_ammo(player.pistol.ammo, player.pistol.stats.magazine_size)
@@ -140,6 +148,7 @@ func open_bench() -> void:
 	wave_runner.warm_up() # top the enemy reserve up while nothing is happening
 	projectiles.clear_all()
 	_clear_drops()
+	_fill_drop_reserve()
 	_clear_boss()
 	if current_area != "":
 		_swap_arena(MAIN_ARENA, "")
@@ -201,6 +210,7 @@ func enter_area(area_id: String) -> void:
 	touch_controls.set_enabled(true)
 	PlaytestLog.event("area_entered", {"area": area_id})
 	_take_control()
+	Fx.warm_up_lighting(self, player.pistol) # the area's materials have not met the muzzle light
 
 
 ## Replaces the arena node (the main arena or a side area) and points everything at the new one.
@@ -291,11 +301,63 @@ func _on_enemy_killed(enemy: Enemy, credits: int) -> void:
 
 
 func _spawn_drop(item: Dictionary, position: Vector3) -> void:
-	var drop := LootDrop.create(item)
+	var drop := _take_drop()
 	drops.add_child(drop)
+	drop.reset(item)
 	drop.global_position = Vector3(position.x, maxf(position.y, 0.0), position.z)
-	drop.picked_up.connect(_on_drop_picked_up)
 	PlaytestLog.event("drop", {"base": item.get("base", ""), "rarity": item.get("rarity", 0), "wave": current_wave})
+
+
+## A ready drop node from the reserve, or a new one when it is empty (counted as a miss).
+func _take_drop() -> LootDrop:
+	while not _drop_reserve.is_empty():
+		var drop: LootDrop = _drop_reserve.pop_back()
+		if is_instance_valid(drop):
+			return drop
+	drop_reserve_misses += 1
+	return _make_drop()
+
+
+func _make_drop() -> LootDrop:
+	var drop := LootDrop.new()
+	drop.picked_up.connect(_on_drop_picked_up)
+	drop.retired.connect(_on_drop_retired)
+	return drop
+
+
+## Builds drop nodes up to DROP_RESERVE at the bench (each enters the tree once to pay its _ready),
+## so no drop is built mid-wave.
+func _fill_drop_reserve() -> void:
+	while _drop_reserve.size() < DROP_RESERVE:
+		var drop := _make_drop()
+		drops.add_child(drop)
+		drops.remove_child(drop)
+		_drop_reserve.append(drop)
+
+
+func drop_reserve_count() -> int:
+	var count := 0
+	for drop in _drop_reserve:
+		if is_instance_valid(drop):
+			count += 1
+	return count
+
+
+## A collected drop leaves the floor at the end of the frame (it is inside its own area signal).
+func _on_drop_retired(drop: LootDrop) -> void:
+	_recycle_drop.call_deferred(drop)
+
+
+func _recycle_drop(drop: LootDrop) -> void:
+	if not is_instance_valid(drop):
+		return
+	if drop.get_parent() != null:
+		drop.get_parent().remove_child(drop)
+	if _drop_reserve.size() >= DROP_RESERVE or _drop_reserve.has(drop):
+		if not _drop_reserve.has(drop):
+			drop.queue_free()
+		return
+	_drop_reserve.append(drop)
 
 
 func _on_drop_picked_up(drop: LootDrop) -> void:
@@ -308,8 +370,18 @@ func _on_item_received(item: Dictionary, destination: String) -> void:
 
 func _clear_drops() -> void:
 	for drop in drops.get_children():
-		drops.remove_child(drop)
-		drop.queue_free()
+		if drop is LootDrop:
+			_recycle_drop(drop)
+		else:
+			drops.remove_child(drop)
+			drop.queue_free()
+
+
+func _exit_tree() -> void:
+	for drop in _drop_reserve:
+		if is_instance_valid(drop):
+			drop.free()
+	_drop_reserve.clear()
 
 
 func _on_wave_cleared(wave: WaveDefinition, duration: float) -> void:

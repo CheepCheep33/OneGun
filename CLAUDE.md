@@ -11,9 +11,12 @@ change as the code.
 - `godot --headless --path . res://tests/smoke_test.tscn` must end with `0 failed`. Grep the log
   for `SCRIPT ERROR` as well; a runtime error can hide behind passing lines.
 - `godot --headless --path . res://tests/reforge_sim.tscn` exits 1 on a missed plan target.
+- `tests/gpu_gate.sh <godot>` runs the GPU probe with a real renderer (needs `xvfb-run` and Mesa)
+  and exits 1 when a first-time event after the warm-up compiles a shader or uploads a mesh, or a
+  repeated event allocates GPU memory. The headless tests cannot see any of that.
 - `xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3
   res://tests/screenshot_tour.tscn -- out_dir=<dir>` draws the main screens; look at the images.
-- CI (`.github/workflows/web.yml`) runs the first three and deploys a preview per branch. Never
+- CI (`.github/workflows/web.yml`) runs the first four and deploys a preview per branch. Never
   claim the game was played if it was not run.
 
 ## Performance is a standing rule (Jacob, 30 October 2026)
@@ -21,15 +24,23 @@ change as the code.
 Every change keeps stutter and lag in check; the browser build is the target. The rules, budget
 and measurements live in GAME_PLAN.md under "Performance budget". In short:
 
-- Nothing allocates during combat. Effects, projectiles, enemies and sounds come from pools and
-  reserves built behind the first bench (`FxPool`, `ProjectilePool`, the `WaveRunner` reserve).
-  A new effect goes through `FxPool` with a cap; a new enemy is covered once a wave names it;
-  anything else that can appear mid-wave is pooled or pre-built the same way.
-- Every material a wave can show is drawn in `FxPool.warm_up`, so no shader compiles mid-wave.
+- Nothing allocates during combat. Effects, projectiles, enemies, drops, sounds and HUD notes
+  come from pools and reserves built behind the first bench (`FxPool`, `ProjectilePool`, the
+  `WaveRunner` reserve, the game's drop reserve). A new effect goes through `FxPool` with a cap;
+  a new enemy is covered once a wave names it; anything else that can appear mid-wave is pooled
+  or pre-built the same way.
+- Every material a wave can show is drawn in `FxPool.warm_up`, lit by the muzzle light and unlit
+  (the Compatibility renderer compiles a lit shader variant the first time a point light touches
+  a material), so no shader compiles mid-wave. World-space text is 2D (`FxPool` labels): a
+  `Label3D` rebuilds its mesh on every change. Every HUD text size is drawn once at the bench
+  (`Hud.warm_up_text`). A material parameter is an upload; write it only when it changes.
 - `tests/cases/perf_cases.gd` is the gate (node, resource and object counts across two combat
-  rounds, spawns from the reserve, the 4 ms game-logic budget, warm-up coverage). It runs in
-  CI. Never loosen it to get green; fix the cause. `res://tests/perf_probe.tscn` shows where a
-  frame's time goes; `-- case=perf` after the smoke test's scene path runs the gate alone.
+  rounds, spawns from the reserves, the 4 ms game-logic budget, warm-up coverage) and
+  `tests/gpu_gate.sh` is its GPU side (no compile-sized frame and no allocation by a repeated
+  event after the warm-up, under llvmpipe with the shader cache off). Both run in CI. Never
+  loosen them to get green; fix the cause. `res://tests/perf_probe.tscn` shows where a frame's
+  CPU time goes; `res://tests/gpu_probe.tscn` (with a renderer) what each first-time event
+  costs the GPU; `-- case=perf` after the smoke test's scene path runs the CPU gate alone.
 - Every playtest asks for the FPS readout (pause menu, Show FPS): average and worst frame in a
   busy wave, plus device and browser. A worse reading than the last milestone blocks the merge.
 

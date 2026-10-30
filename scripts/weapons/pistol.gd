@@ -22,6 +22,9 @@ const FLASH_TIME := 0.045
 const FLASH_MIN_FRAMES := 2
 const MODEL_RECOVERY := 14.0
 const BASE_MUZZLE_Z := -0.16
+## How far the muzzle light reaches while the shader warm-up draws the arena: far enough to touch
+## everything in view from the player's start (the arena is 46 m across).
+const WARM_UP_LIGHT_RANGE := 60.0
 
 @export var base_stats: WeaponBaseStats
 ## Physics layers a shot can hit: world (1) and enemies (3).
@@ -54,6 +57,9 @@ var _kick := 0.0
 var _model_rest: Vector3
 var _slide_rest_scale: Vector3
 var _grip_rest_scale: Vector3
+## The muzzle light's range and energy from the scene, restored after a warm-up.
+var _light_range := 5.0
+var _light_energy := 3.0
 
 @onready var _model: Node3D = $Model
 @onready var _slide: MeshInstance3D = $Model/Slide
@@ -71,6 +77,8 @@ func _ready() -> void:
 	_model_rest = _model.position
 	_slide_rest_scale = _slide.scale
 	_grip_rest_scale = _grip.scale
+	_light_range = _flash_light.omni_range
+	_light_energy = _flash_light.light_energy
 	if stats == null:
 		apply_build(WeaponStats.build(base_stats))
 	_set_flash_visible(false)
@@ -284,6 +292,25 @@ func _finish_reload() -> void:
 func _set_flash_visible(value: bool) -> void:
 	_flash.visible = value
 	_flash_light.visible = value
+
+
+## Shows the muzzle flash and its light for the shader warm-up (FxPool.warm_up) until called with
+## false, with the light reaching the whole arena at no brightness. The Compatibility renderer
+## compiles a lit variant of a material's shader the first time a point light touches it; without
+## this, every material the muzzle light reaches for the first time compiled mid-shot, which is a
+## frozen frame in the browser (nearly a second for the first hit on an enemy under llvmpipe).
+func set_warm_up_flash(active: bool) -> void:
+	if active:
+		_flash_light.omni_range = WARM_UP_LIGHT_RANGE
+		_flash_light.light_energy = 0.0
+		_flash_left = INF
+		_flash_frames = 0
+		_set_flash_visible(true)
+	else:
+		_flash_light.omni_range = _light_range
+		_flash_light.light_energy = _light_energy
+		_flash_left = 0.0
+		_set_flash_visible(false)
 
 
 ## Refits the placeholder model from the equipped bases' `visual` hints: a longer slide for long

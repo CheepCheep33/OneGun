@@ -11,32 +11,36 @@ func run_scene(game: Node) -> void:
 
 func _test_effect_pool(game: Node) -> void:
 	var pool: FxPool = game.get_node_or_null("FxPool")
-	var cap := FxPool.MAX_TRACERS + FxPool.MAX_IMPACTS + FxPool.MAX_NUMBERS + FxPool.MAX_BURSTS + FxPool.MAX_SOUNDS + FxPool.MAX_RINGS
+	var cap := FxPool.MAX_TRACERS + FxPool.MAX_IMPACTS + FxPool.MAX_NUMBERS + FxPool.MAX_LABELS + FxPool.MAX_BURSTS + FxPool.MAX_SOUNDS + FxPool.MAX_RINGS
 	check(pool != null and pool.warmed_up, "the effect pool exists and warmed its shaders up at the first bench")
+	check(pool.warmed_muzzle_light, "the warm-up drew the arena and its samples with the muzzle light on (lit shader variants)")
 	await seconds(1.0)
-	check(pool.active_count() == 0 and pool.get_child_count() == cap,
-		"warm-up built every pool to its cap, released its samples and freed the enemy and drop samples (%d children)" % pool.get_child_count())
+	check(pool.active_count() == 0 and pool.pooled_count() == cap and pool.get_child_count() == cap - FxPool.MAX_NUMBERS - FxPool.MAX_LABELS + 1,
+		"warm-up built every pool to its cap, released its samples and freed the enemy and drop samples (%d nodes)" % pool.pooled_count())
+	check(pool._numbers[0].node is Label and pool._labels[0].node is Label and pool.label_parent() == game.hud and pool._label_root.get_index() == 0,
+		"damage numbers and drop names are 2D labels drawn first inside the HUD's layer (a Label3D rebuilds its mesh every frame it fades)")
+	check(LootDrop._materials.size() == Items.RARITY_COLORS.size(), "every rarity's drop materials exist after the warm-up (%d)" % LootDrop._materials.size())
 	var origin: Vector3 = game.player.global_position + Vector3.UP
 	for i in 60:
 		Fx.tracer(game, origin, origin + Vector3(0.0, 0.0, -5.0 - i * 0.1))
 		Fx.impact(game, origin + Vector3(i * 0.1, 0.0, -5.0), Vector3.UP)
 		Fx.damage_number(game, origin + Vector3(i * 0.1, 0.0, -5.0), 10.0 + i, i % 7 == 0)
 		Fx.burst(game, origin + Vector3(i * 0.1, 0.0, -5.0), Color.RED)
-	var children := pool.get_child_count()
+	var children := pool.pooled_count()
 	check(children == cap, "sixty of every effect at once stay inside the pool caps (%d nodes)" % children)
 	check(pool.active_count() == FxPool.MAX_TRACERS + FxPool.MAX_IMPACTS + FxPool.MAX_NUMBERS + FxPool.MAX_BURSTS,
 		"when a pool is full the oldest effect is recycled")
 	await seconds(1.2)
-	check(pool.active_count() == 0 and pool.get_child_count() == children, "effects age out and their nodes stay for reuse")
+	check(pool.active_count() == 0 and pool.pooled_count() == children, "effects age out and their nodes stay for reuse")
 	Fx.tracer(game, origin, origin + Vector3(0.0, 0.0, -3.0))
-	check(pool.get_child_count() == children, "a new tracer reuses a pooled node")
+	check(pool.pooled_count() == children, "a new tracer reuses a pooled node")
 	var sample: Enemy = load("res://scenes/enemies/chaser.tscn").instantiate()
 	var stream: AudioStream = sample.death_sound
 	sample.free()
 	for i in 20:
 		Fx.sound_at(game, stream, origin + Vector3(i * 0.2, 0.0, -4.0))
 		Fx.ring(game, origin + Vector3(i * 0.2, -0.9, -4.0), 2.0, Color.RED, 0.3)
-	check(stream != null and pool._sounds.size() == FxPool.MAX_SOUNDS and pool._rings.size() == FxPool.MAX_RINGS and pool.get_child_count() == children,
+	check(stream != null and pool._sounds.size() == FxPool.MAX_SOUNDS and pool._rings.size() == FxPool.MAX_RINGS and pool.pooled_count() == children,
 		"death sounds and slam rings are pooled too (%d players, %d rings for twenty of each)" % [pool._sounds.size(), pool._rings.size()])
 	await seconds(0.5)
 	var projectiles: ProjectilePool = game.projectiles

@@ -13,6 +13,7 @@ const WARDEN_SCENE := "res://scenes/enemies/warden.tscn"
 
 func run_unit() -> void:
 	_test_wave_data()
+	_test_shooter_aim()
 
 
 func run_scene(game: Node) -> void:
@@ -27,6 +28,7 @@ func run_scene(game: Node) -> void:
 	await _test_projectile_tunnelling(game)
 	await _test_player_projectiles(game)
 	await _test_shooter(game)
+	await _test_shooter_range(game)
 	await _test_swarm_drone(game)
 	await _test_warden(game)
 	await _test_floor_loot(game)
@@ -70,6 +72,39 @@ func _test_wave_data() -> void:
 		income += roundi(wave.kill_income() * pow(Progression.TIER_STEP, Progression.tier_of_wave(wave.number))) \
 			+ wave.completion_bonus * (2 if wave.is_boss_wave else 1)
 	check(income > 2000 and income < 3500, "ten waves pay a first-run total in the planned band (%d credits)" % income)
+
+
+## The shooter's aim error grows with distance (plan: worse accuracy the further away).
+func _test_shooter_aim() -> void:
+	var definition: EnemyDefinition = load(SHOOTER)
+	check(definition.max_fire_range > definition.preferred_range + Shooter.RANGE_SLACK and definition.spread_far_degrees > definition.spread_near_degrees,
+		"the shooter fires from beyond where it holds (%.0f m, holds at %.0f) and aims worse out there (%.1f to %.1f degrees)" % [definition.max_fire_range, definition.preferred_range, definition.spread_near_degrees, definition.spread_far_degrees])
+	var near := Shooter.spread_degrees_at(definition, definition.preferred_range)
+	var closer := Shooter.spread_degrees_at(definition, 3.0)
+	var far := Shooter.spread_degrees_at(definition, definition.max_fire_range)
+	var beyond := Shooter.spread_degrees_at(definition, definition.max_fire_range + 10.0)
+	var middle := Shooter.spread_degrees_at(definition, (definition.preferred_range + definition.max_fire_range) * 0.5)
+	check(is_equal_approx(near, definition.spread_near_degrees) and is_equal_approx(closer, definition.spread_near_degrees)
+		and is_equal_approx(far, definition.spread_far_degrees) and is_equal_approx(beyond, definition.spread_far_degrees)
+		and is_equal_approx(middle, (definition.spread_near_degrees + definition.spread_far_degrees) * 0.5),
+		"aim error is the near value up to the preferred range, the far value at maximum range and linear between (%.1f, %.1f, %.1f)" % [near, middle, far])
+	var generator := rng(11)
+	var forward := Vector3(0.3, -0.1, -1.0).normalized()
+	check(Shooter.scatter(forward, 0.0, generator).is_equal_approx(forward), "zero aim error leaves the direction alone")
+	var inside := true
+	var mean_near := 0.0
+	var mean_far := 0.0
+	for i in 300:
+		var a := Shooter.scatter(forward, 1.5, generator)
+		var b := Shooter.scatter(forward, 8.0, generator)
+		inside = inside and rad_to_deg(a.angle_to(forward)) <= 1.5 + 0.01 and rad_to_deg(b.angle_to(forward)) <= 8.0 + 0.01
+		inside = inside and is_equal_approx(a.length(), 1.0) and is_equal_approx(b.length(), 1.0)
+		mean_near += rad_to_deg(a.angle_to(forward)) / 300.0
+		mean_far += rad_to_deg(b.angle_to(forward)) / 300.0
+	check(inside and mean_far > mean_near * 3.0 and mean_near > 0.5,
+		"scattered bolts stay inside their cone and spread further at long range (mean %.2f at 1.5 degrees, %.2f at 8)" % [mean_near, mean_far])
+	var straight_up := Shooter.scatter(Vector3.UP, 5.0, generator)
+	check(is_equal_approx(straight_up.length(), 1.0) and rad_to_deg(straight_up.angle_to(Vector3.UP)) <= 5.01, "scatter copes with a vertical aim")
 
 
 # ------------------------------------------------------------------ fire modes
@@ -284,6 +319,45 @@ func _test_shooter(game: Node) -> void:
 	# A shooter keeps its distance instead of walking into melee.
 	await seconds(1.5)
 	check(shooter.is_alive and shooter.global_position.distance_to(player.global_position) > shooter.definition.retreat_range * 0.8, "the shooter holds range (%.1f m)" % shooter.global_position.distance_to(player.global_position))
+	game.wave_runner.clear_enemies()
+	pool.clear_all()
+	player.revive(game.arena.get_player_start())
+	await physics_frames(2)
+
+
+## A shooter with line of sight opens fire from beyond its preferred range; without it, it never
+## fires. Fixed geometry: the shooter cannot move (speed 0) and stands behind CrateB (9, 5) from
+## the player's start (0, 12); the player then steps to (0, 7), where the crate no longer covers.
+func _test_shooter_range(game: Node) -> void:
+	var player: Player = game.player
+	var pool: ProjectilePool = game.projectiles
+	player.revive(game.arena.get_player_start())
+	var definition: EnemyDefinition = load(SHOOTER).duplicate()
+	definition.move_speed = 0.0
+	definition.spread_near_degrees = 0.0
+	var standing := Vector3(13.95, 0.0, 1.15)
+	var shooter: Shooter = game.wave_runner.spawn_at(standing, definition, load(SHOOTER_SCENE))
+	shooter._rng.seed = 7
+	var blocked_distance := shooter.global_position.distance_to(player.global_position)
+	await seconds(Enemy.SPAWN_TIME + definition.attack_cooldown * 0.5 + definition.attack_windup + 0.4)
+	check(blocked_distance < definition.max_fire_range and not shooter.has_line_of_sight() and pool.live_count() == 0 and shooter.phase == Shooter.Phase.APPROACH,
+		"a shooter in range but without line of sight does not fire (%.1f m, crate between)" % blocked_distance)
+	player.global_position = Vector3(0.0, player.global_position.y, 7.0)
+	await physics_frames(2)
+	var distance := shooter.global_position.distance_to(player.global_position)
+	var exact := (player.global_position + Vector3.UP - shooter._eye.global_position).normalized()
+	var elapsed := 0.0
+	while pool.live_count() == 0 and elapsed < 3.0:
+		await physics_frames(1)
+		elapsed += 1.0 / Engine.physics_ticks_per_second
+	check(shooter.has_line_of_sight() and pool.live_count() == 1 and distance > definition.preferred_range + Shooter.RANGE_SLACK and distance < definition.max_fire_range,
+		"once it can see the player it fires from beyond its preferred range without walking in (%.1f m, %.1f s)" % [distance, elapsed])
+	if pool.live_count() == 1:
+		var bolt: ProjectilePool.Projectile = pool._live[0]
+		var error := rad_to_deg(bolt.velocity.normalized().angle_to(exact))
+		var allowed := Shooter.spread_degrees_at(definition, distance)
+		check(error > 0.0 and error <= allowed + 0.01 and allowed > 3.0,
+			"the long shot carries the aim error of its distance (%.2f of up to %.1f degrees)" % [error, allowed])
 	game.wave_runner.clear_enemies()
 	pool.clear_all()
 	player.revive(game.arena.get_player_start())

@@ -39,6 +39,11 @@ var _hit_flash_left := 0.0
 var _stagger_left := 0.0
 var _repath_left := 0.0
 var _material: StandardMaterial3D
+## The emission last sent to the material: a material parameter is a buffer upload in the
+## renderer, so it is only written when the glow changes.
+var _last_glow := Color.BLACK
+## One reusable line-of-sight query (built per call it would be an allocation per tick per shooter).
+var _los_query := PhysicsRayQueryParameters3D.new()
 ## The scene's collision layer and mask, restored when a recycled enemy is reset.
 var _base_collision_layer := 0
 var _base_collision_mask := 0
@@ -56,6 +61,8 @@ func _ready() -> void:
 	# Each enemy gets its own material so hit flashes don't light up every robot.
 	_material = _body.get_active_material(0).duplicate()
 	_body.set_surface_override_material(0, _material)
+	_los_query.collision_mask = WORLD_MASK
+	_los_query.exclude = [get_rid()]
 	reset()
 
 
@@ -74,7 +81,7 @@ func reset() -> void:
 	collision_mask = _base_collision_mask
 	health = max_health
 	_visual.scale = Vector3.ONE * 0.2
-	_material.emission = Color.BLACK
+	_set_glow(Color.BLACK)
 	_reset_behaviour()
 	health_changed.emit(health, max_health)
 
@@ -109,7 +116,7 @@ func _process(delta: float) -> void:
 	if _hit_flash_left > 0.0:
 		glow = Color(1.0, 1.0, 1.0) * 2.5
 	_visual.scale = Vector3.ONE * visual_scale
-	_material.emission = glow
+	_set_glow(glow)
 	_visual_tick(delta)
 
 
@@ -133,6 +140,12 @@ func silence() -> void:
 	for child in get_children():
 		if child is AudioStreamPlayer3D:
 			child.stop()
+
+
+func _set_glow(glow: Color) -> void:
+	if glow != _last_glow:
+		_last_glow = glow
+		_material.emission = glow
 
 
 ## Where the death burst and loot appear.
@@ -232,10 +245,9 @@ func _chase_target(delta: float, speed_scale := 1.0) -> void:
 func has_line_of_sight() -> bool:
 	if not target_alive():
 		return false
-	var from := global_position + Vector3.UP * (definition.hover_height if definition.flying else 1.3)
-	var to := target.global_position + Vector3.UP * 1.0
-	var query := PhysicsRayQueryParameters3D.create(from, to, WORLD_MASK, [get_rid()])
-	return get_world_3d().direct_space_state.intersect_ray(query).is_empty()
+	_los_query.from = global_position + Vector3.UP * (definition.hover_height if definition.flying else 1.3)
+	_los_query.to = target.global_position + Vector3.UP * 1.0
+	return get_world_3d().direct_space_state.intersect_ray(_los_query).is_empty()
 
 
 func _die(direction: Vector3, killed_by_player: bool) -> void:

@@ -79,13 +79,30 @@ not replace playing the game. It resets the save in `user://`, so back yours up 
 
 **Performance gate.** One of the cases (`tests/cases/perf_cases.gd`) holds the standing rule that no
 milestone may cost frame rate: a second busy combat round must add no nodes, orphan nodes or
-resources and at most a handful of plain objects, every spawn must come from the enemy reserve, the
-shader warm-up must cover every enemy the waves use, and game logic for twice the wave cap must stay
-under 4 ms a frame (scaled to the machine's speed). GAME_PLAN.md, "Performance budget", has the
-reasoning. To see where a frame's time goes by arena load:
+resources and at most a handful of plain objects, every spawn must come from the enemy reserve and
+every drop from the drop reserve, the shader warm-up must cover every enemy the waves use with the
+muzzle light on, and game logic for twice the wave cap must stay under 4 ms a frame (scaled to the
+machine's speed). GAME_PLAN.md, "Performance budget", has the reasoning. To see where a frame's
+time goes by arena load:
 
 ```
 godot --headless --path . res://tests/perf_probe.tscn
+```
+
+**GPU gate.** What the GPU does (shader compiles, mesh and texture uploads) needs a renderer, so
+this runs the GPU probe with Mesa's software renderer under Xvfb, the shader cache off, and fails
+when any first-time event after the warm-up (first shot, first hit, drops, bolts, the Warden, a
+reload, each repeated) shows a compile-sized frame or when a repeated event allocates GPU memory:
+
+```
+tests/gpu_gate.sh [path/to/godot]
+```
+
+The probe on its own prints the table without judging it (`MESA_SHADER_CACHE_DISABLE=true` shows
+compiles at their true cost; `-- light_range=0.001` switches the muzzle light off):
+
+```
+xvfb-run -a -s "-screen 0 640x360x24" godot --path . --rendering-driver opengl3 --resolution 640x360 res://tests/gpu_probe.tscn
 ```
 
 **Reforge simulation.** The plan's prototype gate: a first run and three consecutive Reforges with
@@ -105,8 +122,8 @@ and a drop, the Warden, the cleared banner, the Firing Range, the overflow tray 
 xvfb-run godot --path . --rendering-driver opengl3 res://tests/screenshot_tour.tscn -- out_dir=/tmp/shots
 ```
 
-CI runs the smoke test (with the performance gate) and the Reforge simulation on every push before
-exporting the web build.
+CI runs the smoke test (with the performance gate), the Reforge simulation and the GPU gate on
+every push before exporting the web build.
 
 ## Project layout
 
@@ -115,5 +132,5 @@ assets/      placeholder audio and textures (named placeholder_*)
 data/        tunable resources: weapon base stats, core tuning, attachment bases and slots, affixes, enemies, waves
 scenes/      main scene, arena, side areas, player, pistol, enemies, UI (HUD, bench, pause menu)
 scripts/     GDScript by responsibility (player, weapons, projectiles, enemies, areas, game, progression, ui, effects)
-tests/       smoke test driver and cases, the Reforge simulation, the performance probe, the screenshot tour
+tests/       smoke test driver and cases, the Reforge simulation, the performance and GPU probes, the GPU gate, the screenshot tour
 ```

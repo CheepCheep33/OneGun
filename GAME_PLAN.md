@@ -35,9 +35,11 @@ This file tracks what is built, the decisions that shape the code, and the next 
   oldest lesser unlocked tray item or is dismantled for parts (Common: Scrap; Uncommon: Alloy and
   Scrap; Rare: Circuits and Alloy). Lock, dismantle, dismantle all unlocked Commons, move from the
   tray. The compare view shows every stat change and the behaviour change before equipping.
-- **Enemies:** shooter (wave 4: keeps 11 m, telegraphs, fires a 16 m/s bolt), swarm drone (wave 7:
-  12 health, flies at head height, counts half in the alive cap), the Warden boss (wave 5: 450
-  health, charge and ground slam, boss bar), on a shared `Enemy` base class. Ten authored waves.
+- **Enemies:** shooter (wave 4: opens fire from 18 m the moment it has line of sight, with 8
+  degrees of aim error out there falling to 1.5 at the 11 m it walks in to and holds; telegraphs,
+  fires a 16 m/s bolt; never fires without line of sight), swarm drone (wave 7: 12 health, flies
+  at head height, counts half in the alive cap), the Warden boss (wave 5: 450 health, charge and
+  ground slam, boss bar), on a shared `Enemy` base class. Ten authored waves.
 - **Projectiles:** one pooled system (`ProjectilePool`) for enemy bolts and player ammo types:
   swept raycast per tick so nothing tunnels, 200 live rounds cap, profiles bolt, shell, ricochet,
   charge. Player rounds resolve hits through the same `ShotPipeline` as hitscan rays.
@@ -64,14 +66,26 @@ GPU the browser chooses, and scripts and physics roughly three times slower than
 are the rules the code follows and the checks that hold them.
 
 **Rules.**
-- Nothing is allocated during combat. Effects, projectiles, enemies and sounds come from pools
-  and reserves built behind the first bench (`FxPool`, `ProjectilePool`, the `WaveRunner` enemy
-  reserve). A new effect goes into `FxPool` with a cap; a new enemy is covered by the reserve
-  and the shader warm-up as soon as a wave names it; anything else that can appear mid-wave (a
-  drop kind, a telegraph, a status effect) is pooled or pre-built the same way.
-- Every material a wave can show is drawn once behind the first bench (`FxPool.warm_up`), so no
-  shader compiles mid-wave. Enemy scenes get this from the wave data; a new effect or drop is
-  added to `warm_up` by hand.
+- Nothing is allocated during combat. Effects, projectiles, enemies, drops, sounds and HUD notes
+  come from pools and reserves built behind the first bench (`FxPool`, `ProjectilePool`, the
+  `WaveRunner` enemy reserve, the game's drop reserve, the HUD's note labels). A new effect goes
+  into `FxPool` with a cap; a new enemy is covered by the reserve and the shader warm-up as soon
+  as a wave names it; anything else that can appear mid-wave (a drop kind, a telegraph, a status
+  effect) is pooled or pre-built the same way.
+- Every material a wave can show is drawn behind the first bench (`FxPool.warm_up`), both lit by
+  the pistol's muzzle light and unlit, so no shader compiles mid-wave. The Compatibility
+  renderer compiles a second, lit variant of a material's shader the first time a point light
+  touches it; before 30 Oct the muzzle light did that mid-shot, which was the stutter when
+  shooting (a cold shader cache, as every browser session has, froze the first shot for 1.5 s
+  and the first hit on an enemy for 0.8 s under llvmpipe). Enemy scenes get the warm-up from the
+  wave data; a new effect or drop is added to `warm_up` by hand; a side area gets
+  `Fx.warm_up_lighting` when it loads.
+- World-space text is 2D: damage numbers and drop names are canvas labels inside the HUD's layer,
+  placed where their world position projects each frame. A `Label3D` rebuilds its mesh and its
+  material on every change (each frame of a fade included), which is a GPU allocation per number
+  per frame. Every text size the HUD shows during play is drawn once at the bench
+  (`Hud.warm_up_text`), so no font atlas page is built at the first pickup, boss or banner.
+- A material parameter is a buffer upload: write it only when the value changes (enemy glow).
 - Game logic (process callbacks plus one physics step) for twice the wave cap with automatic
   fire and enemy bolts stays under 4 ms a frame natively, about a quarter of a 60 Hz frame,
   which leaves the browser's slower scripts and its rendering the rest. Measured at 1.5 to
@@ -88,10 +102,24 @@ are the rules the code follows and the checks that hold them.
   and at most 8 plain objects (the engine keeps a few lazily). A per-shot, per-bolt, per-hit or
   per-death allocation shows up as a count that grows by tens or hundreds.
 - Every spawn of that round comes from the enemy reserve (nothing built), and the reserve holds
-  what the waves can have alive at once (41 nodes for waves 1 to 10).
+  what the waves can have alive at once (41 nodes for waves 1 to 10). Sixteen drops over two
+  batches come from the drop reserve and build no node, mesh or material.
 - Game logic for that round stays under the budget, scaled to the test machine's speed by a
   calibration loop so a slow CI runner does not fail it and a fast one does not loosen it.
-- The warm-up drew every enemy scene the waves use.
+- The warm-up drew every enemy scene the waves use, with the muzzle light on; damage numbers are
+  2D labels.
+
+**GPU gate** (`tests/gpu_gate.sh`, in CI on every push): the headless test cannot see shader
+compiles or uploads, so this runs `tests/gpu_probe.tscn` with a real renderer (Mesa's llvmpipe
+under Xvfb, shader cache off, the way a browser pays every session) through a script of
+first-time events after the warm-up: first shot, first hit, damage numbers, deaths, drops, a
+pickup, a shooter's bolt, the Warden, a reload, each repeated once, then a crowd under automatic
+fire. It fails when an event's worst frame is more than 40 ms (or 0.8 of the idle median) over
+that event's median, which under llvmpipe is a shader compile or an upload (a timing failure is
+retried once and must repeat), or when a repeated event allocates any GPU buffer or texture
+memory. Before the fix the first shot read 1546 ms against an idle frame of 52, the first hit
+795, the first drop 109 and the first bolt 153; after it every event is within 10 ms of idle and
+every repeat allocates nothing.
 
 **Tools.** `godot --headless --path . res://tests/perf_probe.tscn` prints the game-logic cost of
 one frame for a dozen arena loads (empty arena, frozen crowd, walking crowd, no nav agents, no
@@ -100,6 +128,11 @@ path runs the performance case alone. Readings on 30 Oct: empty arena 0.6 ms, 8 
 16 chasers 1.2 ms, 16 chasers with automatic fire and bolts 1.4 ms; nearly all of it is the
 physics step (`move_and_slide` for each enemy and the player), process callbacks are under
 0.1 ms. A spawn from the reserve costs 0.1 to 0.3 ms where building the scene cost 1 to 8 ms.
+The GPU probe (`xvfb-run -a -s "-screen 0 640x360x24" godot --path . --rendering-driver opengl3
+--resolution 640x360 res://tests/gpu_probe.tscn`, with `MESA_SHADER_CACHE_DISABLE=true` to see
+compiles at their true cost) prints, per first-time event after the warm-up, the worst and median
+frame and the GPU memory it allocated; `-- light_range=0.001` switches the muzzle light off to
+tell its share apart. A worst frame far over the event's median is a compile or an upload.
 
 **Next levers**, by what Jacob's readout shows. GPU-bound (low average that improves with Render
 scale): a lower web render scale default, simpler enemy meshes, no directional shadow on the
@@ -274,12 +307,17 @@ plan's 3.
   renderer.
 - Browser frame rate is unmeasured from the container. If the FPS readout shows a low average,
   lower Render scale; if the average is fine but the worst frame spikes, something still allocates
-  or compiles mid-wave. "Performance budget" lists the next levers for each case.
+  or compiles mid-wave. "Performance budget" lists the next levers for each case. Jacob's
+  30 Oct report: much less lag, stutter left when shooting; the GPU probe found the cause (the
+  muzzle light's lit shader variants compiled mid-shot) and the fix is in the Milestone 3 branch.
+- Shooter balance after the range change is unplayed: 18 m with line of sight and up to 8
+  degrees of aim error is a first guess, tuned in `data/enemies/shooter.tres`.
 
 ## Next concrete step
 
 Jacob plays Milestone 3 and reports: did he reach the Warden without guidance, did he equip a
-drop on purpose, did the compare view make the choice clear, and what the FPS readout shows in
-a busy wave (average, worst frame, device, browser). Then Milestone 4: crafting table (refine,
+drop on purpose, did the compare view make the choice clear, whether the stutter when shooting
+is gone, how shooters feel firing from 18 m, and what the FPS readout shows in a busy wave
+(average, worst frame, device, browser). Then Milestone 4: crafting table (refine,
 fuse, transmute), Scrapyard, heavy and Foreman, Epics, waves 11 to 15, each new enemy and effect
 inside the performance budget.

@@ -12,9 +12,14 @@ extends TestCase
 ##    callbacks plus one physics step, measured with FrameCost below. The browser build runs this
 ##    code several times slower than native and still has to render, so the budget is tight on
 ##    purpose.
-## 3. The shader warm-up covers every enemy scene the wave data uses, and the enemy reserve holds
-##    as many of each as the waves can have alive at once, so a spawn mid-wave reuses a node (the
-##    round's spawns must all come from the reserve; their cost is printed).
+## 3. The shader warm-up covers every enemy scene the wave data uses and ran with the muzzle light
+##    on (a material the light touches for the first time compiles a second, lit shader), the
+##    enemy reserve holds as many of each as the waves can have alive at once, so a spawn mid-wave
+##    reuses a node (the round's spawns must all come from the reserve; their cost is printed), and
+##    drops come from a reserve too. Damage numbers are 2D labels: a Label3D rebuilds its mesh and
+##    material on every change, each frame of its fade included.
+## What the GPU does (shader compiles, buffer uploads) needs a renderer: tests/gpu_probe.tscn and
+## tests/gpu_gate.sh cover that side.
 
 const CHASERS := 10
 const SHOOTERS := 2
@@ -116,6 +121,7 @@ func run_scene(game: Node) -> void:
 	var previous_sleep := OS.low_processor_usage_mode_sleep_usec
 	OS.low_processor_usage_mode_sleep_usec = 0 # headless Godot sleeps this long every frame
 	_test_warm_up_coverage(game)
+	await _test_drops_from_reserve(game)
 	await _print_spawn_costs(game)
 	# Round one brings every pool to its working size; round two must add nothing.
 	var first := await _combat_round(game, false)
@@ -168,6 +174,31 @@ func _test_warm_up_coverage(game: Node) -> void:
 			short.append("%s %d/%d" % [String(path).get_file().get_basename(), runner.reserved_count(path), targets[path]])
 	check(targets.size() == expected.size() and short.is_empty() and runner.reserved_count() >= 16,
 		"the enemy reserve holds what the waves can have alive at once (%d nodes%s)" % [runner.reserved_count(), "" if short.is_empty() else ", short: " + ", ".join(short)])
+	check(pool != null and pool.warmed_muzzle_light,
+		"the warm-up drew the arena and every sample with the muzzle light on, so no lit shader variant compiles at the first shots")
+	check(pool != null and not pool._numbers.is_empty() and pool._numbers[0].node is Label,
+		"damage numbers are 2D labels on the canvas, not Label3D meshes rebuilt every frame they fade")
+	check(game.drop_reserve_count() == game.DROP_RESERVE,
+		"the drop reserve is full at the bench (%d of %d)" % [game.drop_reserve_count(), game.DROP_RESERVE])
+
+
+## Drops land from the reserve: a second batch after the first is cleared builds no node and no
+## material (one Label3D text per drop is the only thing it writes).
+func _test_drops_from_reserve(game: Node) -> void:
+	var before := _snapshot()
+	var misses_before: int = game.drop_reserve_misses
+	var materials: int = LootDrop._materials.size()
+	var at: Vector3 = game.player.global_position
+	for round in 2:
+		for i in 8:
+			game._spawn_drop(Items.make(&"long_barrel", i % Items.RARITY_COLORS.size()), at + Vector3(i * 1.5 - 5.0, 0.0, -4.0 - round))
+		await physics_frames(2)
+		game._clear_drops()
+		await physics_frames(2)
+	var after := _snapshot()
+	check(game.drop_reserve_misses == misses_before and after["nodes"] == before["nodes"] and after["resources"] <= before["resources"]
+		and LootDrop._materials.size() == materials,
+		"sixteen drops over two batches come from the drop reserve and build no node, mesh or material (%d -> %d nodes, %d built new)" % [before["nodes"], after["nodes"], game.drop_reserve_misses - misses_before])
 
 
 ## What one spawn from the reserve costs, for the plan's budget table (printed, not gated: the

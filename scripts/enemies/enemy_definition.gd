@@ -34,8 +34,16 @@ extends Resource
 @export_group("Ranged")
 ## Ranged enemies keep their distance and fire simulated bolts.
 @export var ranged := false
+## Where it stops and holds once it can see the player.
 @export var preferred_range := 11.0
 ## Closer than this they back away while facing the player.
 @export var retreat_range := 6.0
+## Furthest it fires from, with line of sight, while still walking in to its preferred range. Equal
+## to preferred_range it only fires once it has arrived.
+@export var max_fire_range := 11.0
+## Aim error, as the half-angle in degrees of the cone its bolts leave in: this much at
+## preferred_range or closer, spread_far_degrees at max_fire_range, growing with distance between.
+@export var spread_near_degrees := 0.0
+@export var spread_far_degrees := 0.0
 @export var projectile_speed := 16.0
 @export var projectile_lifetime := 4.0
