@@ -165,6 +165,18 @@ theme_override_font_sizes/font_size = 30
 text = "Click or tap to play"
 horizontal_alignment = 1
 
+[node name="FpsLabel" type="Label" parent="."]
+unique_name_in_owner = true
+offset_left = 28.0
+offset_top = 24.0
+offset_right = 428.0
+offset_bottom = 48.0
+theme_override_colors/font_color = Color(0.85, 0.9, 0.95, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 5
+theme_override_font_sizes/font_size = 16
+text = "60 fps  ·  worst frame 17 ms"
+
 [node name="CreditsLabel" type="Label" parent="Combat"]
 unique_name_in_owner = true
 anchors_preset = 1

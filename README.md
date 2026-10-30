@@ -37,7 +37,11 @@ On-screen controls appear after the first touch. The left thumb drives a floatin
 the edge to sprint), dragging anywhere else looks around, and the buttons fire, reload (R), jump,
 and pause (II).
 
-Options in the pause menu: mouse sensitivity, field of view, camera recoil, damage numbers, volume.
+Options in the pause menu: mouse sensitivity, field of view, camera recoil, damage numbers, volume,
+render scale (the 3D view's share of the window's pixels; lower it if the frame rate is low),
+shadows, glow, and an FPS readout that shows the average and the worst frame of each half second.
+In a browser the defaults are already lighter: render scale matches the page's pixels on high-DPI
+screens, glow is off, and anti-aliasing is off.
 The pause menu's **Abandon wave** (or **Leave the range**) returns to the bench, keeping kill
 credits and collected loot but paying no bonus.
 

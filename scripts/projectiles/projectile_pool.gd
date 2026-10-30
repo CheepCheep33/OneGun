@@ -27,6 +27,8 @@ static var current: ProjectilePool
 
 var _free: Array[Projectile] = []
 var _live: Array[Projectile] = []
+## Capsule meshes by radius, so launching a round never builds a mesh (a stall on the web build).
+var _capsules: Dictionary = {}
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 
@@ -235,15 +237,22 @@ func _acquire() -> Projectile:
 func _launch(p: Projectile, origin: Vector3, velocity: Vector3, lifetime: float, radius: float, color: Color) -> void:
 	p.velocity = velocity
 	p.lifetime = lifetime
-	var capsule := CapsuleMesh.new()
-	capsule.radius = radius
-	capsule.height = radius * 6.0
-	capsule.radial_segments = 8
-	capsule.rings = 2
-	p.mesh.mesh = capsule
+	p.mesh.mesh = _capsule_for(radius)
 	p.material.albedo_color = color
 	p.global_position = origin
 	_orient(p)
+
+
+func _capsule_for(radius: float) -> CapsuleMesh:
+	var key := snappedf(radius, 0.001)
+	if not _capsules.has(key):
+		var capsule := CapsuleMesh.new()
+		capsule.radius = radius
+		capsule.height = radius * 6.0
+		capsule.radial_segments = 8
+		capsule.rings = 2
+		_capsules[key] = capsule
+	return _capsules[key]
 
 
 func _orient(p: Projectile) -> void:

@@ -35,6 +35,8 @@ environment = SubResource("Environment")
 transform = Transform3D(0.81915, -0.46985, 0.32899, 0, 0.57358, 0.81915, -0.57358, -0.67101, 0.46985, 0, 10, 0)
 light_energy = 1.1
 shadow_enabled = true
+directional_shadow_mode = 0
+directional_shadow_max_distance = 70.0
 
 [node name="Arena" parent="." instance=ExtResource("2_arena")]
 

@@ -20,6 +20,10 @@ func _ready() -> void:
 	_add_slider("Camera recoil", &"camera_recoil", Settings.CAMERA_RECOIL_RANGE, 0.05, "%.2f")
 	_add_slider("Volume", &"master_volume", Vector2(0.0, 1.0), 0.05, "%.2f")
 	_add_toggle("Damage numbers", &"show_damage_numbers")
+	_add_slider("Render scale", &"render_scale", Settings.RENDER_SCALE_RANGE, 0.05, "%.2f")
+	_add_toggle("Shadows", &"shadows")
+	_add_toggle("Glow", &"glow")
+	_add_toggle("Show FPS", &"show_fps")
 
 
 func open(leave_text := "Abandon wave") -> void:

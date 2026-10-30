@@ -51,6 +51,9 @@ This file tracks what is built, the decisions that shape the code, and the next 
 - **Save file** version 3 (inventory, tray, parts, loot stream state, range record), migrating
   from 1 and 2. If `user://` is not writable the game keeps saving in memory and says so.
 - **Reforge simulation** (`tests/reforge_sim.tscn`): the plan's prototype gate, run in CI.
+- **Browser performance pass** (after Jacob reported lag and stutter in the browser, 30 Oct):
+  pooled effects, shader warm-up, web-specific render defaults, and video options with an FPS
+  readout. See the decision below.
 
 ## Reforge simulation: what it says
 
@@ -155,7 +158,27 @@ plan's 3.
   pull during a burst or its pause is held until the gun can fire again.
 - **Melee is dodgeable:** chasers stop, glow for 0.45 s, then hit only if you are still within
   reach. The Warden's slam only hits grounded players inside its ring; a jump escapes it.
-- **Settings** (sensitivity, FOV, camera recoil, damage numbers, volume) save to `user://settings.cfg`.
+- **Settings** (sensitivity, FOV, camera recoil, damage numbers, volume, render scale, shadows,
+  glow, FPS readout) save to `user://settings.cfg`.
+- **Web build performance.** The browser build runs on one thread (no SharedArrayBuffer, so no
+  thread support) on whatever GPU the browser exposes, and its canvas follows the device pixel
+  ratio, so a high-DPI screen renders four times the pixels. Two kinds of cost were found in the
+  code: steady GPU load (glow, 4x MSAA, four-split 4096 shadows at full device resolution) and
+  hitches (every shot allocated a tracer mesh, material and node; every hit a Label3D; every
+  death a particle emitter with a new mesh; every projectile a new capsule; and the first use of
+  each effect, enemy and drop material compiled a shader mid-wave, since the web has no shader
+  cache). What changed: on the web, glow and MSAA are off and the directional shadow is one
+  2048 split with hard filtering (`project.godot` `.web` overrides, the Sun's shadow mode); the
+  3D view renders at `Settings.render_scale`, which on the web defaults to the inverse of the
+  device pixel ratio (the HUD stays sharp; confirmed under xvfb that bilinear scaling works on
+  the Compatibility renderer); tracers, impacts, damage numbers and death bursts come from
+  `FxPool` with shared meshes and materials and fixed caps (24/24/24/8, oldest recycled);
+  projectile capsules are cached by radius; `FxPool.warm_up` draws one of every effect, enemy
+  and drop under the floor during the first bench so the shaders compile there; physics catch-up
+  is capped at four steps per frame so a slow frame cannot spiral. The pause menu has Render
+  scale, Shadows, Glow and Show FPS (average and worst frame per half second) so a tester can
+  isolate GPU load (render scale helps) from hitches (the worst-frame number spikes). Not
+  measured in a browser from here; Jacob's readout decides.
 - **Tests are split into cases** (`tests/cases/`): stats, loot, combat, bench. The smoke test
   driver runs their unit checks before the scene and their scene checks on the running game.
 - All art and audio are generated placeholders, named `placeholder_*`. New enemies and the loot
@@ -192,6 +215,9 @@ plan's 3.
 - Placeholder sounds are synthesized and rough; new enemies reuse them.
 - Running the smoke test headless prints harmless `mesh_get_surface_count` errors from Godot's dummy
   renderer, plus a leak warning at exit.
+- Browser frame rate is unmeasured from the container. If the FPS readout shows a low average,
+  lower Render scale; if the average is fine but the worst frame spikes, the hitches are CPU-side
+  (allocation, physics, or the browser) and the pooling needs extending to whatever still allocates.
 
 ## Next concrete step
 

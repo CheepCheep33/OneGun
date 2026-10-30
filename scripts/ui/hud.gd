@@ -10,7 +10,12 @@ const LOW_AMMO_FRACTION := 0.3
 const PICKUP_NOTE_TIME := 3.2
 const MAX_PICKUP_NOTES := 4
 
+const FPS_WINDOW := 0.5
+
 var _vignette_alpha := 0.0
+var _fps_frames := 0
+var _fps_elapsed := 0.0
+var _fps_worst := 0.0
 var _reload_total := 0.0
 var _reload_elapsed := 0.0
 var _credit_pop: Tween
@@ -36,6 +41,7 @@ var _banner_tween: Tween
 @onready var _banner_detail: Label = %ClearedDetail
 @onready var _combat_group: Control = $Combat
 @onready var _capture_prompt: Label = %CapturePrompt
+@onready var _fps_label: Label = %FpsLabel
 @onready var _controls_hint: Label = $Combat/ControlsHint
 @onready var _death_panel: Control = $DeathPanel
 @onready var _death_summary: Label = %DeathSummary
@@ -50,16 +56,37 @@ func _ready() -> void:
 	_banner.visible = false
 	_boss_box.visible = false
 	_credit_gain_label.modulate.a = 0.0
+	_fps_label.visible = false
 	%BenchButton.pressed.connect(func() -> void: bench_requested.emit())
 
 
 func _process(delta: float) -> void:
+	if _fps_label.visible:
+		_fps_frames += 1
+		_fps_elapsed += delta
+		_fps_worst = maxf(_fps_worst, delta)
+		if _fps_elapsed >= FPS_WINDOW:
+			_fps_label.text = "%d fps  ·  worst frame %d ms" % [roundi(_fps_frames / _fps_elapsed), roundi(_fps_worst * 1000.0)]
+			_fps_frames = 0
+			_fps_elapsed = 0.0
+			_fps_worst = 0.0
 	if _vignette_alpha > 0.0:
 		_vignette_alpha = maxf(_vignette_alpha - delta * 1.2, 0.0)
 		_vignette.color.a = _vignette_alpha
 	if _reload_bar.visible:
 		_reload_elapsed += delta
 		_reload_bar.value = clampf(_reload_elapsed / _reload_total, 0.0, 1.0)
+
+
+## The frame-rate readout (pause menu: Show FPS). Shows the average and the worst frame of each
+## half second, so a stutter reads as a spike even when the average looks fine.
+func set_fps_visible(value: bool) -> void:
+	_fps_label.visible = value
+	_fps_frames = 0
+	_fps_elapsed = 0.0
+	_fps_worst = 0.0
+	if value:
+		_fps_label.text = "measuring..."
 
 
 func set_health(current: float, maximum: float) -> void:

@@ -36,6 +36,8 @@ var _boss: Enemy
 @onready var pause_menu: PauseMenu = $PauseMenu
 @onready var bench: Bench = $Bench
 @onready var touch_controls: TouchControls = $TouchControls
+@onready var sun: DirectionalLight3D = $Sun
+@onready var world_environment: WorldEnvironment = $WorldEnvironment
 
 
 func _ready() -> void:
@@ -65,6 +67,10 @@ func _ready() -> void:
 	touch_controls.pause_requested.connect(pause)
 	Progression.credits_changed.connect(hud.set_credits)
 	Progression.item_received.connect(_on_item_received)
+	Settings.changed.connect(_apply_video_settings)
+	_apply_video_settings()
+	# Compile the effect, enemy and drop shaders behind the first bench, not in the first wave.
+	Fx.warm_up(self, player.camera)
 
 	hud.set_health(player.health, player.max_health)
 	hud.set_ammo(player.pistol.ammo, player.pistol.stats.magazine_size)
@@ -101,6 +107,16 @@ func _process(_delta: float) -> void:
 	# Browsers release the mouse on Esc without sending the key to the game; treat any lost capture as a pause.
 	if _had_control and not has_control:
 		pause()
+
+
+## Render scale, shadows, glow and the FPS readout, from Settings (pause menu).
+func _apply_video_settings() -> void:
+	var viewport := get_viewport()
+	viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	viewport.scaling_3d_scale = Settings.render_scale
+	sun.shadow_enabled = Settings.shadows
+	world_environment.environment.glow_enabled = Settings.glow
+	hud.set_fps_visible(Settings.show_fps)
 
 
 func _notification(what: int) -> void:

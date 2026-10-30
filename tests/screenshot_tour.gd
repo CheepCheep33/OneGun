@@ -54,7 +54,8 @@ class Tour:
 		await _frames(2)
 		await _shot("02_bench_gunsmith_compare")
 
-		# Wave 4: shooters and a floor drop with its beam.
+		# Wave 4: shooters and a floor drop with its beam, with the FPS readout on.
+		Settings.set_value(&"show_fps", true)
 		game.start_wave(4)
 		await _frames(5)
 		await _seconds(7.0)
@@ -104,6 +105,7 @@ class Tour:
 		await _frames(3)
 		await _shot("06_firing_range")
 
+		Settings.set_value(&"show_fps", false)
 		game.pause()
 		await _frames(3)
 		await _shot("07_pause_in_range")

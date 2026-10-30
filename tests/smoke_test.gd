@@ -25,6 +25,7 @@ class Driver:
 		preload("res://tests/cases/loot_cases.gd"),
 		preload("res://tests/cases/combat_cases.gd"),
 		preload("res://tests/cases/bench_cases.gd"),
+		preload("res://tests/cases/effects_cases.gd"),
 	]
 	var cases: Array[TestCase] = []
 
