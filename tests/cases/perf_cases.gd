@@ -49,6 +49,12 @@ const DRONE := "res://data/enemies/swarm_drone.tres"
 const DRONE_SCENE := "res://scenes/enemies/swarm_drone.tscn"
 const WARDEN := "res://data/enemies/warden.tres"
 const WARDEN_SCENE := "res://scenes/enemies/warden.tscn"
+const HEAVY := "res://data/enemies/heavy.tres"
+const HEAVY_SCENE := "res://scenes/enemies/heavy.tscn"
+const BEARER := "res://data/enemies/shield_bearer.tres"
+const BEARER_SCENE := "res://scenes/enemies/shield_bearer.tscn"
+const FOREMAN := "res://data/enemies/foreman.tres"
+const FOREMAN_SCENE := "res://scenes/enemies/foreman.tscn"
 
 ## Definitions with the drop chance zeroed, so a lucky Common does not land on the floor and read
 ## as a leak. Made once: the second round must not create anything new.
@@ -147,6 +153,7 @@ func run_scene(game: Node) -> void:
 		"game logic with %d enemies, bolts and automatic fire costs %.2f ms a frame: %.2f process + %.2f physics (budget %.1f ms at %.2fx the reference machine's time; worst step %.1f ms; %d frames, %d steps)" % [total, cost["frame"], cost["process"], cost["physics"], budget, speed, cost["worst_physics"], cost["frames"], cost["steps"]])
 	print("PERF  frame %.2f ms (%.2f process + %.2f physics), worst physics step %.1f ms, budget %.1f ms; %d nodes, %d resources, %d objects after the round" % [cost["frame"], cost["process"], cost["physics"], cost["worst_physics"], budget, after["nodes"], after["resources"], after["objects"]])
 	OS.low_processor_usage_mode_sleep_usec = previous_sleep
+	await _test_milestone_4_round(game)
 	game.player.pistol.apply_build(Progression.build_stats(), Progression.equipped())
 	game.open_bench()
 	await physics_frames(2)
@@ -205,7 +212,8 @@ func _test_drops_from_reserve(game: Node) -> void:
 ## node-count checks below prove the reuse).
 func _print_spawn_costs(game: Node) -> void:
 	var report := PackedStringArray()
-	for pair in [[CHASER, CHASER_SCENE], [SHOOTER, SHOOTER_SCENE], [DRONE, DRONE_SCENE], [WARDEN, WARDEN_SCENE]]:
+	for pair in [[CHASER, CHASER_SCENE], [SHOOTER, SHOOTER_SCENE], [DRONE, DRONE_SCENE], [WARDEN, WARDEN_SCENE],
+			[HEAVY, HEAVY_SCENE], [BEARER, BEARER_SCENE], [FOREMAN, FOREMAN_SCENE]]:
 		var definition: EnemyDefinition = load(pair[0])
 		var scene: PackedScene = load(pair[1])
 		var started := Time.get_ticks_usec()
@@ -275,6 +283,68 @@ func _combat_round(game: Node, measure: bool) -> Dictionary:
 	pool.clear_all()
 	await physics_frames(2)
 	return result
+
+
+## Milestone 4's mid-wave events twice over: Splitter plus Explosive shells on automatic into
+## heavies and shield bearers (three shells a pull, a blast each), the Foreman calling in drones
+## and laying molten pools, and every death. The second round must build nothing.
+func _test_milestone_4_round(game: Node) -> void:
+	var first := await _milestone_4_round(game)
+	var before := _snapshot()
+	var second := await _milestone_4_round(game)
+	var after := _snapshot()
+	check(first["shells"] > 12 and second["shells"] > 12 and second["summons"] > 0 and second["misses"] == 0,
+		"a Milestone 4 round is busy and spawns from the reserve: %d explosive shells, %d drones summoned (%d built new)" % [second["shells"], second["summons"], second["misses"]])
+	check(after["nodes"] == before["nodes"] and after["orphans"] == before["orphans"] and after["resources"] <= before["resources"]
+		and after["objects"] <= before["objects"] + OBJECT_SLACK,
+		"blasts, shields, summons and molten pools allocate nothing the second time (%d -> %d nodes, %d -> %d resources, %d -> %d objects)" % [before["nodes"], after["nodes"], before["resources"], after["resources"], before["objects"], after["objects"]])
+
+
+func _milestone_4_round(game: Node) -> Dictionary:
+	var player: Player = game.player
+	var pistol: Pistol = player.pistol
+	player.revive(game.arena.get_player_start())
+	player.health = 1.0e9
+	game.state = game.State.COMBAT
+	var build := {"receiver": _automatic, "muzzle": _milestone_4_items()["muzzle"], "ammo": _milestone_4_items()["ammo"]}
+	pistol.apply_build(WeaponStats.build(Progression.PISTOL_BASE, Progression.core_levels(), build), build)
+	var misses_before: int = game.wave_runner.reserve_misses
+	var enemies: Array[Enemy] = []
+	for i in 2:
+		enemies.append(_spawn(game, HEAVY, HEAVY_SCENE, 6.0, -2.0 + 4.0 * i))
+		enemies.append(_spawn(game, BEARER, BEARER_SCENE, 5.0, -1.0 + 2.0 * i))
+	var foreman: Foreman = _spawn(game, FOREMAN, FOREMAN_SCENE, 12.0, 0.0)
+	enemies.append(foreman)
+	for enemy in enemies:
+		enemy.health = 1.0e9
+	await seconds(Enemy.SPAWN_TIME + 0.1)
+	foreman._summon_cooldown = 0.0
+	foreman._volley_cooldown = 99.0
+	foreman._pool_cooldown = 99.0
+	var shots_before: int = pistol.shots_fired
+	pistol.request_fire()
+	await seconds(2.0)
+	pistol.release_fire()
+	var shells: int = (pistol.shots_fired - shots_before) * int(pistol.stats.behaviours["ray_count"])
+	foreman.lay_pool(player.global_position + Vector3(2.0, 0.0, 0.0))
+	foreman.lay_pool(player.global_position + Vector3(-2.0, 0.0, 0.0))
+	await seconds(Foreman.POOL_WARNING + 0.3)
+	var summons: int = game.wave_runner.summon_count()
+	for enemy in game.wave_runner.living_enemies():
+		if not enemy.summoned:
+			enemy.take_hit(1.0e12, enemy.global_position, Vector3.FORWARD)
+	await seconds(SETTLE_SECONDS)
+	game.projectiles.clear_all()
+	game.wave_runner.clear_enemies()
+	await physics_frames(2)
+	return {"shells": shells, "summons": summons, "misses": game.wave_runner.reserve_misses - misses_before}
+
+
+## Made once, so the second round creates no items.
+func _milestone_4_items() -> Dictionary:
+	if not _definitions.has("m4_items"):
+		_definitions["m4_items"] = {"muzzle": Items.make(&"splitter"), "ammo": Items.make(&"explosive_rounds")}
+	return _definitions["m4_items"]
 
 
 func _spawn(game: Node, definition_path: String, scene_path: String, distance: float, side: float) -> Enemy:

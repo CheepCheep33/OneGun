@@ -5,10 +5,12 @@
 [ext_resource type="PackedScene" path="res://scenes/enemies/chaser.tscn" id="scene_chaser"]
 [ext_resource type="PackedScene" path="res://scenes/enemies/shooter.tscn" id="scene_shooter"]
 [ext_resource type="PackedScene" path="res://scenes/enemies/swarm_drone.tscn" id="scene_swarm_drone"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/heavy.tscn" id="scene_heavy"]
 [ext_resource type="Resource" path="res://data/enemies/chaser.tres" id="def_chaser"]
 [ext_resource type="Resource" path="res://data/enemies/runner.tres" id="def_runner"]
 [ext_resource type="Resource" path="res://data/enemies/shooter.tres" id="def_shooter"]
 [ext_resource type="Resource" path="res://data/enemies/swarm_drone.tres" id="def_swarm_drone"]
+[ext_resource type="Resource" path="res://data/enemies/heavy.tres" id="def_heavy"]
 
 [sub_resource type="Resource" id="Group_1"]
 script = ExtResource("2_group")
@@ -42,11 +44,19 @@ count = 8
 interval = 0.4
 start_delay = 25.0
 
+[sub_resource type="Resource" id="Group_5"]
+script = ExtResource("2_group")
+enemy_scene = ExtResource("scene_heavy")
+definition = ExtResource("def_heavy")
+count = 3
+interval = 10.0
+start_delay = 12.0
+
 [resource]
 script = ExtResource("1_wave")
 number = 9
 display_name = "Overrun"
-groups = Array[ExtResource("2_group")]([SubResource("Group_1"), SubResource("Group_2"), SubResource("Group_3"), SubResource("Group_4")])
+groups = Array[ExtResource("2_group")]([SubResource("Group_1"), SubResource("Group_2"), SubResource("Group_3"), SubResource("Group_4"), SubResource("Group_5")])
 max_alive = 8
 completion_bonus = 170
 is_boss_wave = false

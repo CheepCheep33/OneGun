@@ -1,7 +1,7 @@
 class_name Bench
 extends CanvasLayer
-## The intermission bench: core tuning purchases, the gunsmith slots, the inventory and overflow
-## tray with compare, side-area doors and wave select. Runs while the tree is paused. Reads and
+## The intermission bench: core tuning purchases and the crafting table (two tabs on the left), the
+## gunsmith slots, the inventory and overflow tray with compare, side-area doors and wave select. Runs while the tree is paused. Reads and
 ## writes progression only through the Progression autoload, and every number it shows comes from
 ## the same WeaponStats functions combat uses, so no preview ever lies.
 
@@ -12,7 +12,12 @@ const CHASER_DEFINITION := preload("res://data/enemies/chaser.tres")
 const LOCKED_COLOR := Color(0.6, 0.6, 0.62)
 const DEFAULT_COLOR := Color(0.8, 0.82, 0.86)
 const ITEM_BUTTON_SIZE := Vector2(36, 32)
-const AREAS := [{"id": "firing_range", "name": "Firing Range", "blurb": "Target dummies with damage readouts and a timed gallery. No enemies."}]
+const AREAS := [
+	{"id": "firing_range", "name": "Firing Range", "blurb": "Target dummies with damage readouts and a timed gallery. No enemies."},
+	{"id": "scrapyard", "name": "Scrapyard", "blurb": "A salvage run: grab scrap cores off the wrecks under rising spawns, then extract at the south door when it opens after 90 s. Parts in bulk and a Rare every extraction. Dying or leaving loses the cores you carry."},
+]
+## Rarities the crafting table makes; Legendaries come from a Legendary core (Milestone 5).
+const CRAFT_RARITIES := [Items.Rarity.COMMON, Items.Rarity.UNCOMMON, Items.Rarity.RARE, Items.Rarity.EPIC]
 
 var selected_wave := 1
 ## uid of the item shown in the detail panel, or -1.
@@ -24,11 +29,29 @@ var _slot_buttons: Dictionary = {} # slot id (String) -> Button
 var _area_buttons: Dictionary = {} # area id -> Button
 var _item_buttons: Dictionary = {} # uid -> Button
 var _rarity_styles: Dictionary = {} # rarity -> {normal, hover, pressed}
+## The crafting table's choices and widgets (built in code under %CraftView).
+var craft_slot: StringName = &"barrel"
+var craft_base: StringName = &""
+var craft_rarity := Items.Rarity.COMMON
+var craft_message := ""
+var _craft_slot_buttons: Dictionary = {} # slot id (String) -> Button
+var _craft_base_row: HBoxContainer
+var _craft_rarity_buttons: Dictionary = {} # rarity -> Button
+var _craft_cost_label: Label
+var _craft_button: Button
+var _reroll_title: Label
+var _reroll_buttons: Array[Button] = []
+var _craft_message_label: Label
 
 @onready var _credits_label: Label = %CreditsLabel
 @onready var _parts_label: Label = %PartsLabel
 @onready var _core_rows_box: VBoxContainer = %CoreRows
 @onready var _stats_summary: Label = %StatsSummary
+@onready var _core_tab_button: Button = %CoreTabButton
+@onready var _craft_tab_button: Button = %CraftTabButton
+@onready var _core_view: VBoxContainer = %CoreView
+@onready var _craft_view: VBoxContainer = %CraftView
+@onready var _wave_scroll: ScrollContainer = %WaveScroll
 @onready var _gunsmith_blurb: Label = %GunsmithBlurb
 @onready var _slot_grid: GridContainer = %SlotGrid
 @onready var _inventory_label: Label = %InventoryLabel
@@ -60,6 +83,9 @@ func _ready() -> void:
 	_build_slot_grid()
 	_build_wave_list()
 	_build_area_list()
+	_build_craft_view()
+	_core_tab_button.pressed.connect(show_tab.bind("core"))
+	_craft_tab_button.pressed.connect(show_tab.bind("craft"))
 	_start_button.pressed.connect(_on_start_pressed)
 	_reset_button.pressed.connect(_on_reset_pressed)
 	_dismantle_commons_button.pressed.connect(_on_dismantle_commons_pressed)
@@ -92,10 +118,26 @@ func open() -> void:
 	visible = true
 	refresh()
 	_start_button.grab_focus()
+	_scroll_to_selected_wave.call_deferred()
 
 
 func close() -> void:
 	visible = false
+
+
+## Shows the left panel's "core" (core tuning and the pistol summary) or "craft" tab.
+func show_tab(tab: String) -> void:
+	var crafting := tab == "craft"
+	_core_view.visible = not crafting
+	_craft_view.visible = crafting
+	_core_tab_button.button_pressed = not crafting
+	_craft_tab_button.button_pressed = crafting
+	if crafting:
+		_refresh_craft()
+
+
+func is_craft_tab_open() -> bool:
+	return _craft_view.visible
 
 
 func select_item(uid: int) -> void:
@@ -107,8 +149,11 @@ func select_item(uid: int) -> void:
 func refresh() -> void:
 	_credits_label.text = "CREDITS  %d" % Progression.credits
 	var parts: Dictionary = Progression.parts()
-	_parts_label.text = "SCRAP %d   ·   ALLOY %d   ·   CIRCUITS %d" % [
-		int(parts.get("scrap", 0)), int(parts.get("alloy", 0)), int(parts.get("circuits", 0))]
+	var part_texts := PackedStringArray()
+	for part in Items.PART_IDS:
+		if part != "legendary_cores" or int(parts.get(part, 0)) > 0:
+			part_texts.append("%s %d" % [String(Items.PART_NAMES[part]).to_upper(), int(parts.get(part, 0))])
+	_parts_label.text = "   ·   ".join(part_texts)
 	var stats := Progression.build_stats()
 	for id in _core_rows:
 		var tuning := CoreTuning.get_definition(id)
@@ -130,6 +175,7 @@ func refresh() -> void:
 	_refresh_detail()
 	_refresh_waves()
 	_refresh_areas()
+	_refresh_craft()
 
 
 # ------------------------------------------------------------------ building
@@ -202,6 +248,93 @@ func _build_wave_list() -> void:
 		_wave_buttons.append(button)
 
 
+func _build_craft_view() -> void:
+	# The table's rules live on the tab's tooltip: the panel has no height to spare.
+	_craft_tab_button.tooltip_text = "Turn spare parts into the attachment you want: every recipe is known and nothing fails. Dismantle loot for parts; the Scrapyard pays them in bulk."
+	_craft_view.add_child(_heading("CRAFT"))
+	# Three to a row: five slot names side by side do not fit the panel.
+	var slot_row := GridContainer.new()
+	slot_row.columns = 3
+	slot_row.add_theme_constant_override("h_separation", 4)
+	slot_row.add_theme_constant_override("v_separation", 4)
+	for slot in Items.get_slots():
+		if not Items.slot_has_bases(slot.id):
+			continue
+		var button := _choice_button(slot.display_name)
+		button.pressed.connect(_on_craft_slot_pressed.bind(slot.id))
+		slot_row.add_child(button)
+		_craft_slot_buttons[String(slot.id)] = button
+	_craft_view.add_child(slot_row)
+	_craft_base_row = HBoxContainer.new()
+	_craft_base_row.add_theme_constant_override("separation", 4)
+	_craft_view.add_child(_craft_base_row)
+	var rarity_row := HBoxContainer.new()
+	rarity_row.add_theme_constant_override("separation", 4)
+	for rarity in CRAFT_RARITIES:
+		var button := _choice_button(Items.RARITY_NAMES[rarity])
+		button.add_theme_font_size_override("font_size", 11)
+		var styles: Dictionary = _rarity_styles[rarity]
+		button.add_theme_stylebox_override("normal", styles["normal"])
+		button.add_theme_stylebox_override("hover", styles["hover"])
+		button.add_theme_stylebox_override("pressed", styles["pressed"])
+		button.pressed.connect(_on_craft_rarity_pressed.bind(rarity))
+		rarity_row.add_child(button)
+		_craft_rarity_buttons[rarity] = button
+	_craft_view.add_child(rarity_row)
+	_craft_cost_label = _small_label("", 13)
+	_craft_view.add_child(_craft_cost_label)
+	_craft_button = Button.new()
+	_craft_button.custom_minimum_size = Vector2(0, 34)
+	_craft_button.add_theme_font_size_override("font_size", 14)
+	_craft_button.pressed.connect(_on_craft_pressed)
+	_craft_view.add_child(_craft_button)
+	_craft_view.add_child(HSeparator.new())
+	_craft_view.add_child(_heading("REROLL ONE AFFIX"))
+	_reroll_title = _small_label("", 13)
+	_craft_view.add_child(_reroll_title)
+	for i in Items.AFFIX_COUNT.max():
+		var button := Button.new()
+		button.custom_minimum_size = Vector2(0, 30)
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.clip_text = true
+		button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		button.add_theme_font_size_override("font_size", 12)
+		button.pressed.connect(_on_reroll_pressed.bind(i))
+		_craft_view.add_child(button)
+		_reroll_buttons.append(button)
+	_craft_message_label = _small_label("", 13)
+	_craft_message_label.add_theme_color_override("font_color", Color(0.75, 1.0, 0.75))
+	_craft_view.add_child(_craft_message_label)
+	craft_slot = &"barrel"
+
+
+func _small_label(text: String, size: int) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.add_theme_font_size_override("font_size", size)
+	return label
+
+
+func _heading(text: String) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 15)
+	label.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
+	return label
+
+
+func _choice_button(text: String) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.toggle_mode = true
+	button.custom_minimum_size = Vector2(0, 30)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.clip_text = true
+	button.add_theme_font_size_override("font_size", 12)
+	return button
+
+
 func _build_area_list() -> void:
 	for area in AREAS:
 		var button := Button.new()
@@ -242,7 +375,7 @@ func _refresh_slots() -> void:
 			button.text = "%s\n%s\n(default)" % [slot.display_name.to_upper(), default.display_name if default else "Empty"]
 			button.add_theme_color_override("font_color", DEFAULT_COLOR)
 			button.tooltip_text = slot.summary + ("\n" + default.description if default else "")
-	_gunsmith_blurb.text = "%d of 7 slots open. Drops: about 1 in 12 kills (Common), 1 in 50 (Uncommon), one Uncommon per first clear." % open_count
+	_gunsmith_blurb.text = "%d of 7 slots open. Drops: 1 in 12 kills Common, 1 in 50 Uncommon, an Uncommon per first clear; heavies and shield bearers drop Rares, bosses an Epic." % open_count
 
 
 func _refresh_inventory() -> void:
@@ -451,7 +584,7 @@ func _refresh_waves() -> void:
 			", paid again on replay" if Progression.is_wave_cleared(wave.number) else ""]
 	_start_button.text = "START WAVE %d" % selected_wave
 	if Progression.highest_cleared_wave >= WaveRunner.WAVE_COUNT:
-		_wave_note.text = "All ten waves cleared. Replay any wave for the same bonus (replays drop Common and Uncommon only); more waves come with the next milestone."
+		_wave_note.text = "All %d waves cleared. Replay any wave for the same bonus (replays drop Common and Uncommon only); more waves come with the next milestone." % WaveRunner.WAVE_COUNT
 	else:
 		_wave_note.text = "Clear a wave to unlock the next. Replaying a cleared wave pays the same bonus but drops Common and Uncommon loot only."
 
@@ -462,10 +595,95 @@ func _refresh_areas() -> void:
 		var gate := int(Progression.AREA_GATES.get(area["id"], 0))
 		if Progression.is_area_open(area["id"]):
 			button.text = "%s  ·  open" % area["name"]
+			if area["id"] == "scrapyard":
+				var yard := Progression.scrapyard_state()
+				if int(yard["extractions"]) > 0:
+					button.text = "%s  ·  %d extracted, best %d cores" % [area["name"], int(yard["extractions"]), int(yard["best_cores"])]
+				else:
+					button.text = "%s  ·  open  ·  a Rare per extraction" % area["name"]
 			button.disabled = false
 		else:
 			button.text = "%s  ·  locked until wave %d" % [area["name"], gate]
 			button.disabled = true
+
+
+## Keeps the selected wave in view in the scrolling list.
+func _scroll_to_selected_wave() -> void:
+	var index := selected_wave - 1
+	if index >= 0 and index < _wave_buttons.size():
+		_wave_scroll.ensure_control_visible(_wave_buttons[index])
+
+
+func _refresh_craft() -> void:
+	if _craft_button == null or not _craft_view.visible:
+		return
+	for slot_id in _craft_slot_buttons:
+		var slot_button: Button = _craft_slot_buttons[slot_id]
+		slot_button.button_pressed = StringName(slot_id) == craft_slot
+		slot_button.disabled = not Progression.is_slot_open(StringName(slot_id))
+		var slot := Items.get_slot(StringName(slot_id))
+		slot_button.tooltip_text = slot.gate_text if slot and slot_button.disabled else ""
+	# The base row: every non-default base of the slot, greyed with its gate when locked.
+	var bases: Array[AttachmentDefinition] = []
+	for base in Items.bases_for_slot(craft_slot):
+		if not base.is_default:
+			bases.append(base)
+	var valid := false
+	for base in bases:
+		valid = valid or base.id == craft_base
+	if not valid:
+		craft_base = bases[0].id if not bases.is_empty() else &""
+		for base in bases:
+			if Progression.is_base_unlocked(base):
+				craft_base = base.id
+				break
+	for child in _craft_base_row.get_children():
+		child.queue_free()
+	for base in bases:
+		var button := _choice_button(base.display_name)
+		button.button_pressed = base.id == craft_base
+		button.tooltip_text = base.description if Progression.is_base_unlocked(base) else base.gate_text
+		if not Progression.is_base_unlocked(base):
+			button.add_theme_color_override("font_color", LOCKED_COLOR)
+		button.pressed.connect(_on_craft_base_pressed.bind(base.id))
+		_craft_base_row.add_child(button)
+	for rarity in _craft_rarity_buttons:
+		_craft_rarity_buttons[rarity].button_pressed = rarity == craft_rarity
+	var cost := Crafting.craft_cost(craft_rarity)
+	var have := PackedStringArray()
+	for part in cost:
+		have.append("%d %s" % [int(Progression.parts().get(part, 0)), Items.PART_NAMES[part]])
+	_craft_cost_label.text = "Costs %s  ·  you have %s" % [Crafting.describe_cost(cost), ", ".join(have)]
+	var reason := Progression.craft_block_reason(craft_base, craft_rarity)
+	var base_definition := Items.get_attachment(craft_base)
+	var label := "%s %s" % [Items.RARITY_NAMES[craft_rarity], base_definition.display_name if base_definition else "attachment"]
+	_craft_button.text = "Craft %s" % label if reason == "" else "Craft %s  ·  %s" % [label, reason]
+	_craft_button.disabled = reason != ""
+	# Reroll works on the item selected in the inventory, tray or a slot.
+	var found := Progression.locate(selected_uid)
+	for button in _reroll_buttons:
+		button.visible = false
+	if found.is_empty():
+		_reroll_title.text = "Select an item in the inventory, the tray or a fitted slot to reroll one of its affixes; the others stay."
+	else:
+		var item: Dictionary = found["item"]
+		var affixes: Array = item.get("affixes", [])
+		if affixes.is_empty():
+			_reroll_title.text = "%s (%s) has no affixes to reroll." % [Items.display_name(item), Items.rarity_name(item)]
+		else:
+			var cost_text := Crafting.describe_cost(Crafting.reroll_cost(item))
+			_reroll_title.text = "%s (%s)  ·  each reroll costs %s, rising with every reroll of this item" % [
+				Items.display_name(item), Items.rarity_name(item), cost_text]
+			var lines := Items.affix_lines(item)
+			for i in affixes.size():
+				var button := _reroll_buttons[i]
+				var blocked := Progression.reroll_block_reason(selected_uid, i)
+				button.visible = true
+				button.text = "Reroll  %s" % lines[i] if i < lines.size() else "Reroll"
+				button.disabled = blocked != ""
+				var line: String = lines[i] if i < lines.size() else ""
+				button.tooltip_text = "%s\n%s" % [line, blocked if blocked != "" else "Replaces this affix with a fresh one; the others stay."]
+	_craft_message_label.text = craft_message
 
 
 func _describe_stat(tuning: CoreTuningDefinition, stats: WeaponStats) -> String:
@@ -571,6 +789,45 @@ func _on_dismantle_commons_pressed() -> void:
 	if Progression.dismantle_unlocked_commons() > 0:
 		if Progression.locate(selected_uid).is_empty():
 			selected_uid = -1
+		Progression.save()
+	refresh()
+
+
+func _on_craft_slot_pressed(slot_id: StringName) -> void:
+	craft_slot = slot_id
+	craft_base = &""
+	_refresh_craft()
+
+
+func _on_craft_base_pressed(base_id: StringName) -> void:
+	craft_base = base_id
+	_refresh_craft()
+
+
+func _on_craft_rarity_pressed(rarity: int) -> void:
+	craft_rarity = rarity
+	_refresh_craft()
+
+
+func _on_craft_pressed() -> void:
+	var item := Progression.craft(craft_base, craft_rarity)
+	if item.is_empty():
+		_refresh_craft()
+		return
+	craft_message = "Crafted %s  ·  %s" % [Items.display_name(item), Items.rarity_name(item)]
+	selected_uid = int(item.get("uid", -1))
+	Progression.save()
+	refresh()
+
+
+func _on_reroll_pressed(index: int) -> void:
+	var found := Progression.locate(selected_uid)
+	if found.is_empty():
+		return
+	var before := Items.affix_lines(found["item"])
+	if Progression.reroll_affix(selected_uid, index):
+		var after := Items.affix_lines(found["item"])
+		craft_message = "%s  →  %s" % [before[index], after[index]]
 		Progression.save()
 	refresh()
 

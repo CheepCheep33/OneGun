@@ -28,6 +28,8 @@ var _highlight := false
 
 func _ready() -> void:
 	collision_layer = 4 # enemies: the pistol's hit mask
+	if role == "dummy":
+		add_to_group(ShotPipeline.BLAST_TARGET_GROUP) # so explosive rounds show their blast here
 	collision_mask = 0
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
@@ -67,7 +69,7 @@ func _process(delta: float) -> void:
 
 
 ## Called by the shot pipeline. Returns true for pop-up targets so the hit marker reads as a kill.
-func take_hit(damage: float, _point: Vector3, _direction: Vector3) -> bool:
+func take_hit(damage: float, _point: Vector3, _direction: Vector3, _weak_point := false) -> bool:
 	hits += 1
 	total_damage += damage
 	_recent.append([Time.get_ticks_msec() / 1000.0, damage])

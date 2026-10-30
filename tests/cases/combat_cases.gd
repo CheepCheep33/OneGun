@@ -1,7 +1,8 @@
 extends TestCase
-## Milestone 3 combat checks in the running game: fire modes, hitscan pierce, the projectile pool
-## (tunnelling, pierce, the cap), the shooter's bolts, swarm drones, the Warden's specials and boss
-## bar, loot drops on the floor, and the wave data.
+## Combat checks in the running game (Milestones 3 and 4): fire modes, hitscan pierce, the
+## projectile pool (tunnelling, pierce, the cap), the shooter's bolts, swarm drones, the Warden's
+## specials and boss bar, loot drops on the floor, and the wave data. The Milestone 4 roster has its
+## own cases in roster_cases.gd.
 
 const SHOOTER := "res://data/enemies/shooter.tres"
 const SHOOTER_SCENE := "res://scenes/enemies/shooter.tscn"
@@ -39,39 +40,45 @@ func run_scene(game: Node) -> void:
 
 func _test_wave_data() -> void:
 	var waves := WaveRunner.all_waves()
-	check(waves.size() == 10, "ten authored waves load")
-	var boss: WaveDefinition = waves[4]
-	var has_warden := false
-	for group in boss.groups:
-		has_warden = has_warden or (group.definition and group.definition.is_boss)
-	check(boss.is_boss_wave and has_warden, "wave 5 is the Warden's boss wave")
-	var first_shooter := 0
-	var first_drone := 0
+	check(waves.size() == WaveRunner.WAVE_COUNT and WaveRunner.WAVE_COUNT == 15, "fifteen authored waves load (%d)" % waves.size())
+	var bosses := {}
 	for wave in waves:
 		for group in wave.groups:
-			if group.definition and group.definition.ranged and first_shooter == 0:
-				first_shooter = wave.number
-			if group.definition and group.definition.flying and first_drone == 0:
-				first_drone = wave.number
-	check(first_shooter == 4 and first_drone == 7, "the shooter arrives in wave 4 and swarm drones in wave 7")
+			if group.definition and group.definition.is_boss:
+				bosses[wave.number] = String(group.definition.id)
+		if wave.is_boss_wave != bosses.has(wave.number):
+			bosses[wave.number] = "mismatch"
+	check(bosses == {5: "warden", 10: "foreman"}, "wave 5 is the Warden's boss wave and wave 10 the Foreman's (%s)" % str(bosses))
+	var first_seen := {}
+	for wave in waves:
+		for group in wave.groups:
+			if group.definition and not first_seen.has(String(group.definition.id)):
+				first_seen[String(group.definition.id)] = wave.number
+	check(first_seen.get("shooter") == 4 and first_seen.get("swarm_drone") == 7 and first_seen.get("heavy") == 8 and first_seen.get("shield_bearer") == 11,
+		"shooters arrive in wave 4, swarm drones in 7, heavies in 8 and shield bearers in 11 (%s)" % str(first_seen))
 	var scenes_match := true
 	for wave in waves:
 		for group in wave.groups:
 			var enemy: Node = group.enemy_scene.instantiate()
 			var definition: EnemyDefinition = group.definition
-			# Runners share the chaser scene, so match the kind of enemy rather than the id.
-			var fits := enemy is Enemy and (enemy is Shooter) == definition.ranged \
-				and (enemy is SwarmDrone) == definition.flying and (enemy is Warden) == definition.is_boss
+			# Runners and heavies share the chaser scene, so match the kind of enemy rather than the id.
+			var fits := enemy is Enemy and (enemy is Shooter or enemy is Foreman) == definition.ranged \
+				and (enemy is SwarmDrone) == definition.flying and (enemy is Warden or enemy is Foreman) == definition.is_boss \
+				and (enemy is ShieldBearer) == (definition.id == &"shield_bearer")
 			scenes_match = scenes_match and fits
 			enemy.free()
 	check(scenes_match, "every spawn group's scene matches the kind of its definition")
 	var drone: EnemyDefinition = load(DRONE)
 	check(is_equal_approx(drone.counts_as, 0.5) and drone.flying and is_equal_approx(drone.loot_weight, 0.5), "drones count as half, fly and drop half as often")
 	var income := 0
+	var first_ten := 0
 	for wave in waves:
 		income += roundi(wave.kill_income() * pow(Progression.TIER_STEP, Progression.tier_of_wave(wave.number))) \
 			+ wave.completion_bonus * (2 if wave.is_boss_wave else 1)
-	check(income > 2000 and income < 3500, "ten waves pay a first-run total in the planned band (%d credits)" % income)
+		if wave.number == 10:
+			first_ten = income
+	check(first_ten > 2000 and first_ten < 3500, "the first ten waves pay a first-run total in the planned band (%d credits)" % first_ten)
+	check(income > 5000 and income < 8500, "all fifteen waves pay a first-run total in the planned band (%d credits)" % income)
 
 
 ## The shooter's aim error grows with distance (plan: worse accuracy the further away).
@@ -453,7 +460,7 @@ func _test_warden(game: Node) -> void:
 	warden._slam()
 	check(is_equal_approx(player.health, health), "a player in the air is not hit by the slam")
 	player.revive(game.arena.get_player_start())
-	# Killing the boss pays its credits and drops a Rare straight into the inventory.
+	# Killing the boss on its first clear pays its credits and drops an Epic straight into the inventory.
 	var credits := Progression.credits
 	var inventory_before := Progression.inventory().size()
 	var records: Dictionary = Progression.data["records"].duplicate(true)
@@ -461,7 +468,7 @@ func _test_warden(game: Node) -> void:
 	warden.take_hit(100000.0, warden.global_position, Vector3.FORWARD)
 	await physics_frames(3)
 	check(Progression.credits == credits + warden_reward, "the Warden pays its credits")
-	check(Progression.inventory().size() == inventory_before + 1 and int(Progression.inventory().back()["rarity"]) == Items.Rarity.RARE, "the Warden's drop goes straight into the inventory as a Rare")
+	check(Progression.inventory().size() == inventory_before + 1 and int(Progression.inventory().back()["rarity"]) == Items.Rarity.EPIC, "the Warden's first-clear drop goes straight into the inventory as an Epic")
 	check(not hud.is_boss_bar_visible(), "the boss bar hides when the boss dies")
 	check(hud.pickup_note_count() >= 1, "the HUD notes the pickup")
 	Progression.data["records"] = records

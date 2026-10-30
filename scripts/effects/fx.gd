@@ -21,10 +21,11 @@ static func impact(context: Node, position: Vector3, normal: Vector3) -> void:
 		pool.impact(position, normal)
 
 
-static func damage_number(context: Node, position: Vector3, amount: float, killed: bool) -> void:
+## `weak` marks a weak-point hit (the heavy's core): the number shows in its own colour.
+static func damage_number(context: Node, position: Vector3, amount: float, killed: bool, weak := false) -> void:
 	var pool := _pool(context)
 	if pool:
-		pool.damage_number(position, amount, killed)
+		pool.damage_number(position, amount, killed, weak)
 
 
 ## Burst of debris when an enemy dies.
@@ -39,6 +40,13 @@ static func ring(context: Node, position: Vector3, radius: float, color: Color, 
 	var pool := _pool(context)
 	if pool:
 		pool.ring(position, radius, color, duration)
+
+
+## A sphere that swells to `radius` and vanishes: an explosive round's blast.
+static func blast(context: Node, position: Vector3, radius: float) -> void:
+	var pool := _pool(context)
+	if pool:
+		pool.blast(position, radius)
 
 
 ## Positional sound that outlives the node that triggered it (for example a dying enemy).

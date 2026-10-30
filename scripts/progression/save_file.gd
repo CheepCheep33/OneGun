@@ -9,7 +9,7 @@ extends RefCounted
 const PATH := "user://save.json"
 const BACKUP_PATH := "user://save.backup.json"
 const PROBE_PATH := "user://.storage_probe"
-const VERSION := 3
+const VERSION := 4
 
 ## True when the storage probe failed: saves are kept in memory only.
 static var in_memory := false
@@ -17,7 +17,7 @@ static var storage_warning := ""
 static var _memory_copy: Dictionary = {}
 
 
-## The empty version-3 save a new player starts from.
+## The empty version-4 save a new player starts from.
 static func fresh() -> Dictionary:
 	var parts := {}
 	for part in Items.PART_IDS:
@@ -39,9 +39,10 @@ static func fresh() -> Dictionary:
 		## would mangle a 64-bit state. Empty means "not started: seed it from `seed`".
 		"loot_state": "",
 		"range": {"best_time": 0.0, "par_rewarded": false, "chosen_slot": "barrel"},
+		"areas": {"scrapyard": {"runs": 0, "extractions": 0, "best_cores": 0}},
 		"records": {
 			"kills": 0, "credits_earned": 0, "deaths": 0, "waves_cleared": 0,
-			"drops": 0, "pickups": 0, "dismantled": 0,
+			"drops": 0, "pickups": 0, "dismantled": 0, "crafted": 0, "rerolled": 0,
 		},
 	}
 
@@ -90,7 +91,9 @@ static func migrate(data: Dictionary) -> Dictionary:
 	if version == 1:
 		data = _migrate_1_to_2(data)
 	# Version 2 (Milestone 2) lacks parts, the overflow tray, the loot stream and the range
-	# record; sanitize() fills every missing field from fresh(), so 2 -> 3 needs no special step.
+	# record; version 3 (Milestone 3) lacks the side-area records, the crafting records and the
+	# items' reroll counts. sanitize() fills every missing field from fresh(), so 2 -> 3 -> 4 needs
+	# no special step.
 	return sanitize(data)
 
 
@@ -160,6 +163,13 @@ static func sanitize(data: Dictionary) -> Dictionary:
 		var chosen := String(range_data.get("chosen_slot", "barrel"))
 		if Items.SLOT_IDS.has(StringName(chosen)):
 			clean["range"]["chosen_slot"] = chosen
+	var areas: Variant = data.get("areas", {})
+	if areas is Dictionary:
+		for area in clean["areas"]:
+			var saved: Variant = areas.get(area, {})
+			if saved is Dictionary:
+				for key in clean["areas"][area]:
+					clean["areas"][area][key] = maxi(int(saved.get(key, 0)), 0)
 	var records: Variant = data.get("records", {})
 	if records is Dictionary:
 		for key in clean["records"]:

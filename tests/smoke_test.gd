@@ -25,6 +25,9 @@ class Driver:
 		preload("res://tests/cases/loot_cases.gd"),
 		preload("res://tests/cases/combat_cases.gd"),
 		preload("res://tests/cases/bench_cases.gd"),
+		preload("res://tests/cases/crafting_cases.gd"),
+		preload("res://tests/cases/roster_cases.gd"),
+		preload("res://tests/cases/scrapyard_cases.gd"),
 		preload("res://tests/cases/effects_cases.gd"),
 		preload("res://tests/cases/perf_cases.gd"),
 	]
@@ -83,8 +86,12 @@ class Driver:
 		SaveFile.in_memory = true # never touch a developer's real save
 		Progression.data = SaveFile.fresh()
 		Progression._restore_loot_state()
+		# "a+b" runs several cases in the driver's order, to reproduce one case's effect on the next.
 		for script in CASE_SCRIPTS:
-			if name in script.resource_path.get_file():
+			var matched := false
+			for part in name.split("+"):
+				matched = matched or part in script.resource_path.get_file()
+			if matched:
 				var test_case: TestCase = script.new()
 				test_case.driver = self
 				cases.append(test_case)
@@ -182,8 +189,8 @@ class Driver:
 		check(crit.crit_chance == WeaponStats.CRIT_CHANCE_CAP, "crit chance is capped at 50 percent (%.2f)" % crit.crit_chance)
 		check(is_equal_approx(crit.crit_multiplier, 1.5 * 1.5), "crit damage affix scales the crit multiplier (%.2f)" % crit.crit_multiplier)
 		check(crit.extra.has("extra_pierce") and is_equal_approx(crit.extra["extra_pierce"]["flat"], 2.0), "modifiers for stats the pistol does not use yet land in extra")
-		# The readouts assume every ray lands: two rays of 14.88 (plus the crit expectation) kill 40 hp in 2.
-		check(with_item.sustained_dps() > 0.0 and with_item.shots_to_kill(40.0) == 2, "derived readouts count both rays (%d shots to kill 40 hp)" % with_item.shots_to_kill(40.0))
+		# With no spread every ray lands: two rays share 125% of 14.88 (18.6 a pull), so 40 hp takes 3.
+		check(with_item.sustained_dps() > 0.0 and with_item.shots_to_kill(40.0) == 3, "derived readouts count both rays (%d shots to kill 40 hp)" % with_item.shots_to_kill(40.0))
 		var equipped_unknown := WeaponStats.build(base, {}, {"barrel": {"base": "gone", "rarity": 0, "mark": 1, "affixes": []}})
 		check(equipped_unknown.damage == 10.0, "an equipped item with an unknown base contributes nothing")
 		Items.unregister(&"test_long_barrel")

@@ -1,0 +1,108 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/chaser.gd" id="1_chaser"]
+[ext_resource type="Resource" path="res://data/enemies/heavy.tres" id="2_def"]
+[ext_resource type="AudioStream" path="res://assets/audio/placeholder_enemy_attack.wav" id="3_attack"]
+[ext_resource type="AudioStream" path="res://assets/audio/placeholder_enemy_death.wav" id="4_death"]
+
+[sub_resource type="CapsuleShape3D" id="Shape_body"]
+radius = 0.75
+height = 2.3
+
+[sub_resource type="StandardMaterial3D" id="Mat_body"]
+resource_name = "placeholder_heavy_body"
+albedo_color = Color(0.36, 0.38, 0.42, 1)
+metallic = 0.6
+roughness = 0.45
+emission_enabled = true
+emission = Color(0, 0, 0, 1)
+
+[sub_resource type="CapsuleMesh" id="Mesh_body"]
+material = SubResource("Mat_body")
+radius = 0.75
+height = 2.3
+
+[sub_resource type="StandardMaterial3D" id="Mat_plate"]
+resource_name = "placeholder_heavy_plate"
+albedo_color = Color(0.24, 0.26, 0.3, 1)
+metallic = 0.5
+roughness = 0.5
+
+[sub_resource type="BoxMesh" id="Mesh_chest"]
+material = SubResource("Mat_plate")
+size = Vector3(1.2, 0.9, 0.3)
+
+[sub_resource type="BoxMesh" id="Mesh_shoulder"]
+material = SubResource("Mat_plate")
+size = Vector3(0.5, 0.45, 0.8)
+
+[sub_resource type="StandardMaterial3D" id="Mat_eye"]
+resource_name = "placeholder_heavy_eye"
+shading_mode = 0
+albedo_color = Color(1, 0.9, 0.2, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_eye"]
+material = SubResource("Mat_eye")
+size = Vector3(0.6, 0.12, 0.16)
+
+[sub_resource type="StandardMaterial3D" id="Mat_core"]
+resource_name = "placeholder_heavy_core"
+shading_mode = 0
+albedo_color = Color(1, 0.55, 0.1, 1)
+
+[sub_resource type="SphereMesh" id="Mesh_core"]
+material = SubResource("Mat_core")
+radius = 0.3
+height = 0.6
+radial_segments = 16
+rings = 8
+
+[node name="Heavy" type="CharacterBody3D"]
+collision_layer = 4
+collision_mask = 7
+script = ExtResource("1_chaser")
+definition = ExtResource("2_def")
+death_sound = ExtResource("4_death")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.15, 0)
+shape = SubResource("Shape_body")
+
+[node name="Visual" type="Node3D" parent="."]
+
+[node name="Body" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.15, 0)
+mesh = SubResource("Mesh_body")
+
+[node name="Chest" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.3, -0.62)
+mesh = SubResource("Mesh_chest")
+
+[node name="ShoulderL" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.85, 1.85, 0)
+mesh = SubResource("Mesh_shoulder")
+
+[node name="ShoulderR" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.85, 1.85, 0)
+mesh = SubResource("Mesh_shoulder")
+
+[node name="Eye" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.95, -0.66)
+mesh = SubResource("Mesh_eye")
+
+[node name="Core" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.35, 0.68)
+cast_shadow = 0
+mesh = SubResource("Mesh_core")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+path_desired_distance = 0.9
+target_desired_distance = 1.6
+radius = 0.8
+height = 2.3
+
+[node name="AttackSound" type="AudioStreamPlayer3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+stream = ExtResource("3_attack")
+pitch_scale = 0.75
+unit_size = 10.0

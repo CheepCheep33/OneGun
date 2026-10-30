@@ -289,10 +289,15 @@ func pickup_note_count() -> int:
 # ------------------------------------------------------------------ banners
 
 func show_wave_cleared(number: int, bonus: int, first_clear: bool, granted: Dictionary = {}) -> void:
-	_banner_title.text = "WAVE %d CLEARED" % number
 	var detail := "+%d credits%s" % [bonus, "" if first_clear else "  (replay)"]
 	if not granted.is_empty():
 		detail += "\n+ %s  ·  %s" % [Items.display_name(granted), Items.rarity_name(granted)]
+	show_banner("WAVE %d CLEARED" % number, detail)
+
+
+## The centre banner (a wave clear, a Scrapyard extraction), faded in.
+func show_banner(title: String, detail: String) -> void:
+	_banner_title.text = title
 	_banner_detail.text = detail
 	_banner.visible = true
 	_banner.modulate.a = 0.0
@@ -302,10 +307,12 @@ func show_wave_cleared(number: int, bonus: int, first_clear: bool, granted: Dict
 	_banner_tween.tween_property(_banner, "modulate:a", 1.0, 0.25)
 
 
-func show_death(wave: int, kills: int, credits_kept: int) -> void:
+## `area` names the side area the player died in, instead of the wave.
+func show_death(wave: int, kills: int, credits_kept: int, area := "") -> void:
 	_reload_bar.visible = false
 	_banner.visible = false
-	_death_summary.text = "Wave %d  ·  %d kills  ·  %d credits kept" % [wave, kills, credits_kept]
+	var where := area if area != "" else "Wave %d" % wave
+	_death_summary.text = "%s  ·  %d kills  ·  %d credits kept" % [where, kills, credits_kept]
 	_death_panel.visible = true
 	%BenchButton.grab_focus()
 

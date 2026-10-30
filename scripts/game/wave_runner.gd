@@ -7,7 +7,10 @@ extends Node
 ## Enemy nodes are recycled: a dead enemy leaves the arena and waits in a reserve, and a spawn takes
 ## one from there before it builds a new node, because instantiating a scene mid-wave is a hitch on
 ## the web build. warm_up() fills the reserve at the first bench with as many of each enemy as the
-## authored waves can have alive at once.
+## authored waves can have alive at once, plus the adds a boss can call in.
+##
+## A boss's adds (the Foreman's drones) come from the same reserve. They pay kill credits but do not
+## count toward the wave or its alive cap, and they fall with the boss.
 
 signal enemy_killed(enemy: Enemy, credits: int)
 ## The number of enemies left to kill changed (spawned-but-alive plus not-yet-spawned).
@@ -16,7 +19,7 @@ signal wave_cleared(wave: WaveDefinition, duration: float)
 signal boss_spawned(enemy: Enemy)
 
 const WAVE_DIR := "res://data/waves/"
-const WAVE_COUNT := 10
+const WAVE_COUNT := 15
 ## Most nodes of one enemy scene kept in the reserve.
 const RESERVE_CAP := 16
 ## Enemies readied per frame while the reserve fills behind the first bench.
@@ -110,7 +113,8 @@ func _exit_tree() -> void:
 
 
 ## How many of each enemy scene the authored waves can have alive at once: per wave, each group's
-## count or the alive cap in its share, summed per scene; the most over all waves, capped.
+## count or the alive cap in its share, summed per scene, plus a summoning boss's max_summons of
+## its add scene; the most over all waves, capped.
 static func reserve_targets() -> Dictionary:
 	var wanted := {}
 	for wave in all_waves():
@@ -121,6 +125,9 @@ static func reserve_targets() -> Dictionary:
 			var share := group.definition.counts_as if group.definition else 1.0
 			var at_once := mini(group.count, ceili(wave.max_alive / maxf(share, 0.01)))
 			per_scene[group.enemy_scene.resource_path] = int(per_scene.get(group.enemy_scene.resource_path, 0)) + at_once
+			if group.definition and group.definition.summon_scene != null and group.definition.max_summons > 0:
+				var add_path := group.definition.summon_scene.resource_path
+				per_scene[add_path] = int(per_scene.get(add_path, 0)) + group.definition.max_summons
 		for path in per_scene:
 			wanted[path] = mini(maxi(int(wanted.get(path, 0)), int(per_scene[path])), RESERVE_CAP)
 	return wanted
@@ -169,13 +176,23 @@ func clear_enemies() -> void:
 			enemy.queue_free()
 
 
-## Living enemies, each weighted by its definition's share of the cap (drones count as half).
+## Living enemies, each weighted by its definition's share of the cap (drones count as half). A
+## boss's adds are outside the cap.
 func active_weight() -> float:
 	var weight := 0.0
 	for enemy in _container.get_children():
-		if enemy is Enemy and enemy.is_alive:
+		if enemy is Enemy and enemy.is_alive and not enemy.summoned:
 			weight += enemy.definition.counts_as
 	return weight
+
+
+## Living adds called in by a boss.
+func summon_count() -> int:
+	var count := 0
+	for enemy in _container.get_children():
+		if enemy is Enemy and enemy.is_alive and enemy.summoned:
+			count += 1
+	return count
 
 
 func active_count() -> int:
@@ -236,6 +253,7 @@ func spawn_at(position: Vector3, definition: EnemyDefinition = null, scene: Pack
 	enemy.definition = definition
 	enemy.health_scale = scale
 	enemy.target = _player
+	enemy.summoned = false
 	_container.add_child(enemy)
 	enemy.reset()
 	enemy.global_position = position
@@ -243,6 +261,8 @@ func spawn_at(position: Vector3, definition: EnemyDefinition = null, scene: Pack
 		enemy.died.connect(_on_enemy_died)
 	if not enemy.retired.is_connected(_on_enemy_retired):
 		enemy.retired.connect(_on_enemy_retired)
+	if not enemy.summon_requested.is_connected(_on_summon_requested):
+		enemy.summon_requested.connect(_on_summon_requested)
 	_spawned += 1
 	if definition.is_boss:
 		boss_spawned.emit(enemy)
@@ -266,7 +286,11 @@ func _on_enemy_retired(enemy: Enemy) -> void:
 
 
 func _recycle(enemy: Enemy) -> void:
-	if not is_instance_valid(enemy):
+	# A deferred recycle can arrive after clear_enemies already parked the node, or after the node
+	# was taken out again and is alive in the arena: either way it is not this call's to park.
+	if not is_instance_valid(enemy) or enemy.is_alive:
+		return
+	if _reserve.get(enemy.scene_file_path, []).has(enemy):
 		return
 	enemy.silence()
 	if enemy.get_parent() != null:
@@ -298,10 +322,32 @@ func _is_occupied(position: Vector3) -> bool:
 	return false
 
 
+## Brings in up to `count` of a boss's adds around it, never more than its max_summons alive.
+func _on_summon_requested(boss: Enemy, count: int) -> void:
+	var definition := boss.definition
+	if definition.summon_scene == null or definition.summon_definition == null or not boss.is_alive:
+		return
+	var wanted := mini(count, definition.max_summons - summon_count())
+	for i in wanted:
+		var angle := TAU * (i + 0.5) / maxf(wanted, 1.0) + boss.rotation.y
+		var offset := Vector3(cos(angle), 0.0, sin(angle)) * 2.4
+		var add := spawn_at(boss.global_position + offset + Vector3.UP * 0.2, definition.summon_definition, definition.summon_scene)
+		add.summoned = true
+
+
+## Every living add leaves without paying (its boss fell).
+func dismiss_summons() -> void:
+	for enemy in _container.get_children():
+		if enemy is Enemy and enemy.is_alive and enemy.summoned:
+			enemy.dismiss()
+
+
 func _on_enemy_died(enemy: Enemy) -> void:
 	var credits := maxi(roundi(enemy.definition.credit_reward * scale), 1)
 	enemy_killed.emit(enemy, credits)
-	if not running or current == null:
+	if enemy.definition.is_boss:
+		dismiss_summons.call_deferred()
+	if not running or current == null or enemy.summoned:
 		return
 	_killed += 1
 	remaining_changed.emit(remaining(), current.total_enemies())
