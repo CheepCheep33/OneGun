@@ -26,10 +26,15 @@ class Driver:
 		preload("res://tests/cases/combat_cases.gd"),
 		preload("res://tests/cases/bench_cases.gd"),
 		preload("res://tests/cases/effects_cases.gd"),
+		preload("res://tests/cases/perf_cases.gd"),
 	]
 	var cases: Array[TestCase] = []
 
 	func _run() -> void:
+		var only := _only_case()
+		if only != "":
+			await _run_only(only)
+			return
 		await _test_settings_fallback()
 		Progression.reset()
 		check(not SaveFile.in_memory, "storage probe found writable user data")
@@ -64,6 +69,37 @@ class Driver:
 			await test_case.run_scene(game)
 		await _test_abandon(game)
 		print("\n%d checks, %d failed" % [checks, failures])
+		get_tree().quit(1 if failures > 0 else 0)
+
+	## `-- case=<name>` after the scene path runs one case script (by file name, "perf" matches
+	## perf_cases.gd) on the running game and nothing else, for quick iteration on that case.
+	func _only_case() -> String:
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("case="):
+				return arg.trim_prefix("case=")
+		return ""
+
+	func _run_only(name: String) -> void:
+		SaveFile.in_memory = true # never touch a developer's real save
+		Progression.data = SaveFile.fresh()
+		Progression._restore_loot_state()
+		for script in CASE_SCRIPTS:
+			if name in script.resource_path.get_file():
+				var test_case: TestCase = script.new()
+				test_case.driver = self
+				cases.append(test_case)
+		if cases.is_empty():
+			printerr("No case script matches '%s'" % name)
+			get_tree().quit(1)
+			return
+		for test_case in cases:
+			await test_case.run_unit()
+		get_tree().change_scene_to_file("res://scenes/main.tscn")
+		var game := await _wait_for_main()
+		await seconds(0.5) # let the warm-up finish as it would behind a real first bench
+		for test_case in cases:
+			await test_case.run_scene(game)
+		print("\n%d checks, %d failed (case %s only)" % [checks, failures, name])
 		get_tree().quit(1 if failures > 0 else 0)
 
 	# ------------------------------------------------------------------ unit tests

@@ -2,10 +2,14 @@ class_name Enemy
 extends CharacterBody3D
 ## The one base enemy (plan: Enemies). Owns health, the spawn-in, hit flash and stagger, death and
 ## loot hooks, gravity, navigation helpers and the target. Types (Chaser, Shooter, SwarmDrone,
-## Warden) are scenes with their own `_behave` step and telegraph colours. Status effects, weak
-## points and enemy affixes land here in later milestones.
+## Warden) are scenes with their own `_behave` step, `_reset_behaviour` and telegraph colours.
+## Nodes are recycled by the wave runner, so every bit of state lives in reset(). Status effects,
+## weak points and enemy affixes land here in later milestones.
 
 signal died(enemy: Enemy)
+## Emitted on every death, by the player or the fall limit, once the node can leave the arena.
+## The wave runner recycles it into its reserve (no node is built or freed mid-wave).
+signal retired(enemy: Enemy)
 signal health_changed(current: float, maximum: float)
 
 const SPAWN_TIME := 0.6
@@ -35,6 +39,9 @@ var _hit_flash_left := 0.0
 var _stagger_left := 0.0
 var _repath_left := 0.0
 var _material: StandardMaterial3D
+## The scene's collision layer and mask, restored when a recycled enemy is reset.
+var _base_collision_layer := 0
+var _base_collision_mask := 0
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 @onready var _visual: Node3D = $Visual
@@ -44,11 +51,31 @@ var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 func _ready() -> void:
 	add_to_group("enemies")
-	health = max_health
+	_base_collision_layer = collision_layer
+	_base_collision_mask = collision_mask
 	# Each enemy gets its own material so hit flashes don't light up every robot.
 	_material = _body.get_active_material(0).duplicate()
 	_body.set_surface_override_material(0, _material)
+	reset()
+
+
+## The starting state for a fresh or recycled node: full health, spawning in, collisions on, the
+## behaviour at its first phase. The wave runner calls this after it puts the enemy in the arena,
+## with `definition`, `health_scale` and `target` already set.
+func reset() -> void:
+	is_alive = true
+	is_spawning = true
+	_spawn_time = 0.0
+	_hit_flash_left = 0.0
+	_stagger_left = 0.0
+	_repath_left = 0.0
+	velocity = Vector3.ZERO
+	collision_layer = _base_collision_layer
+	collision_mask = _base_collision_mask
+	health = max_health
 	_visual.scale = Vector3.ONE * 0.2
+	_material.emission = Color.BLACK
+	_reset_behaviour()
 	health_changed.emit(health, max_health)
 
 
@@ -100,6 +127,14 @@ func take_hit(damage: float, _point: Vector3, direction: Vector3) -> bool:
 	return false
 
 
+## Cuts every sound this enemy is playing; the death sound is the pool's, so it carries on. A node
+## leaving the arena must not keep a paused playback alive in the reserve.
+func silence() -> void:
+	for child in get_children():
+		if child is AudioStreamPlayer3D:
+			child.stop()
+
+
 ## Where the death burst and loot appear.
 func center() -> Vector3:
 	return global_position + Vector3.UP * (definition.hover_height if definition.flying else 0.9)
@@ -113,6 +148,11 @@ func _behave(_delta: float) -> void:
 
 
 func _on_spawned() -> void:
+	pass
+
+
+## Back to the first phase with cooldowns at their opening values; runs on every (re)spawn.
+func _reset_behaviour() -> void:
 	pass
 
 
@@ -208,4 +248,4 @@ func _die(direction: Vector3, killed_by_player: bool) -> void:
 		Fx.sound_at(self, death_sound, at)
 	if killed_by_player:
 		died.emit(self)
-	queue_free()
+	retired.emit(self)

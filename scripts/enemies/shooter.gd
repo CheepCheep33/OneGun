@@ -18,6 +18,12 @@ var _cooldown_left := 0.0
 @onready var _fire_sound: AudioStreamPlayer3D = $AttackSound
 
 
+func _reset_behaviour() -> void:
+	phase = Phase.APPROACH
+	_phase_time = 0.0
+	_cooldown_left = 0.0
+
+
 func _on_spawned() -> void:
 	_cooldown_left = definition.attack_cooldown * 0.5
 

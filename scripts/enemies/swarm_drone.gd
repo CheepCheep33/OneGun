@@ -20,9 +20,11 @@ var _back_off_direction := Vector3.ZERO
 @onready var _zap_sound: AudioStreamPlayer3D = $AttackSound
 
 
-func _ready() -> void:
-	super()
+func _reset_behaviour() -> void:
+	phase = Phase.APPROACH
+	_phase_time = 0.0
 	_bob_time = randf() * TAU
+	_back_off_direction = Vector3.ZERO
 
 
 func _behave(delta: float) -> void:

@@ -43,8 +43,12 @@ var _charge_direction := Vector3.ZERO
 @onready var _ring: MeshInstance3D = $Ring
 
 
-func _ready() -> void:
-	super()
+func _reset_behaviour() -> void:
+	phase = Phase.CHASE
+	_phase_time = 0.0
+	_charge_cooldown = 3.0
+	_slam_cooldown = 5.5
+	_charge_direction = Vector3.ZERO
 	_ring.visible = false
 
 

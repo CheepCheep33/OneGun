@@ -15,6 +15,11 @@ var _phase_time := 0.0
 @onready var _attack_sound: AudioStreamPlayer3D = $AttackSound
 
 
+func _reset_behaviour() -> void:
+	phase = Phase.CHASE
+	_phase_time = 0.0
+
+
 func _behave(delta: float) -> void:
 	_phase_time += delta
 	match phase:

@@ -69,8 +69,10 @@ func _ready() -> void:
 	Progression.item_received.connect(_on_item_received)
 	Settings.changed.connect(_apply_video_settings)
 	_apply_video_settings()
-	# Compile the effect, enemy and drop shaders behind the first bench, not in the first wave.
+	# Compile the effect, enemy and drop shaders and build the enemy reserve behind the first bench,
+	# not in the first wave (GAME_PLAN.md, "Performance budget").
 	Fx.warm_up(self, player.camera)
+	wave_runner.warm_up()
 
 	hud.set_health(player.health, player.max_health)
 	hud.set_ammo(player.pistol.ammo, player.pistol.stats.magazine_size)
@@ -135,6 +137,7 @@ func open_bench() -> void:
 	_pending_wave = null
 	wave_runner.stop()
 	wave_runner.clear_enemies()
+	wave_runner.warm_up() # top the enemy reserve up while nothing is happening
 	projectiles.clear_all()
 	_clear_drops()
 	_clear_boss()
@@ -343,11 +346,16 @@ func _on_player_died() -> void:
 func _on_boss_spawned(enemy: Enemy) -> void:
 	_boss = enemy
 	hud.show_boss(enemy.definition.display_name, enemy.health, enemy.max_health)
-	enemy.health_changed.connect(hud.set_boss_health)
-	enemy.tree_exited.connect(_clear_boss, CONNECT_ONE_SHOT)
+	if not enemy.health_changed.is_connected(hud.set_boss_health):
+		enemy.health_changed.connect(hud.set_boss_health)
+	if not enemy.tree_exited.is_connected(_clear_boss):
+		enemy.tree_exited.connect(_clear_boss, CONNECT_ONE_SHOT)
 
 
+## Runs when the boss dies or the encounter resets (its node leaves the arena for the reserve).
 func _clear_boss() -> void:
+	if is_instance_valid(_boss) and _boss.health_changed.is_connected(hud.set_boss_health):
+		_boss.health_changed.disconnect(hud.set_boss_health)
 	_boss = null
 	hud.hide_boss()
 

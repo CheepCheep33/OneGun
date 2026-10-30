@@ -52,8 +52,61 @@ This file tracks what is built, the decisions that shape the code, and the next 
   from 1 and 2. If `user://` is not writable the game keeps saving in memory and says so.
 - **Reforge simulation** (`tests/reforge_sim.tscn`): the plan's prototype gate, run in CI.
 - **Browser performance pass** (after Jacob reported lag and stutter in the browser, 30 Oct):
-  pooled effects, shader warm-up, web-specific render defaults, and video options with an FPS
-  readout. See the decision below.
+  pooled effects, enemy and projectile reserves built behind the first bench, shader warm-up,
+  web-specific render defaults, video options with an FPS readout, and the performance gate in
+  the smoke test. See "Performance budget" below.
+
+## Performance budget (standing rule)
+
+Jacob's rule from 30 Oct 2026: every milestone and every thread keeps stutter and lag in check;
+no change may cost frame rate. The browser build is the target: one thread, no shader cache, a
+GPU the browser chooses, and scripts and physics roughly three times slower than native. These
+are the rules the code follows and the checks that hold them.
+
+**Rules.**
+- Nothing is allocated during combat. Effects, projectiles, enemies and sounds come from pools
+  and reserves built behind the first bench (`FxPool`, `ProjectilePool`, the `WaveRunner` enemy
+  reserve). A new effect goes into `FxPool` with a cap; a new enemy is covered by the reserve
+  and the shader warm-up as soon as a wave names it; anything else that can appear mid-wave (a
+  drop kind, a telegraph, a status effect) is pooled or pre-built the same way.
+- Every material a wave can show is drawn once behind the first bench (`FxPool.warm_up`), so no
+  shader compiles mid-wave. Enemy scenes get this from the wave data; a new effect or drop is
+  added to `warm_up` by hand.
+- Game logic (process callbacks plus one physics step) for twice the wave cap with automatic
+  fire and enemy bolts stays under 4 ms a frame natively, about a quarter of a 60 Hz frame,
+  which leaves the browser's slower scripts and its rendering the rest. Measured at 1.5 to
+  1.7 ms on 30 Oct; the probe below shows where it goes.
+- Web render defaults stay light (glow off, MSAA off, one 2048 shadow split, a render scale that
+  follows the device pixel ratio); anything heavier is a pause-menu option.
+- Every milestone's playtest asks for the FPS readout (pause menu, Show FPS): the average and
+  the worst frame in a busy wave on Jacob's machine and browser. A worse reading than the
+  previous milestone blocks the merge until the cause is fixed.
+
+**Checks** (`tests/cases/perf_cases.gd`, part of the smoke test, in CI on every push):
+- A second busy combat round (16 enemies, automatic fire, 90 enemy bolts, 16 deaths) adds no
+  nodes, no orphan nodes and no resources (meshes, materials, shapes) compared with the first,
+  and at most 8 plain objects (the engine keeps a few lazily). A per-shot, per-bolt, per-hit or
+  per-death allocation shows up as a count that grows by tens or hundreds.
+- Every spawn of that round comes from the enemy reserve (nothing built), and the reserve holds
+  what the waves can have alive at once (41 nodes for waves 1 to 10).
+- Game logic for that round stays under the budget, scaled to the test machine's speed by a
+  calibration loop so a slow CI runner does not fail it and a fast one does not loosen it.
+- The warm-up drew every enemy scene the waves use.
+
+**Tools.** `godot --headless --path . res://tests/perf_probe.tscn` prints the game-logic cost of
+one frame for a dozen arena loads (empty arena, frozen crowd, walking crowd, no nav agents, no
+enemy-to-enemy collision, drones, shooters, fire). `-- case=perf` after the smoke test's scene
+path runs the performance case alone. Readings on 30 Oct: empty arena 0.6 ms, 8 chasers 0.9 ms,
+16 chasers 1.2 ms, 16 chasers with automatic fire and bolts 1.4 ms; nearly all of it is the
+physics step (`move_and_slide` for each enemy and the player), process callbacks are under
+0.1 ms. A spawn from the reserve costs 0.1 to 0.3 ms where building the scene cost 1 to 8 ms.
+
+**Next levers**, by what Jacob's readout shows. GPU-bound (low average that improves with Render
+scale): a lower web render scale default, simpler enemy meshes, no directional shadow on the
+web. CPU-bound (low average that Render scale does not help): move enemies on alternate physics
+ticks with interpolated visuals, or drop enemy-to-enemy collision (about 0.2 of the 1.2 ms for 16
+chasers). Hitches (a fine average with worst-frame spikes): something still allocates or
+compiles; the performance case's counts point at it.
 
 ## Reforge simulation: what it says
 
@@ -178,9 +231,13 @@ plan's 3.
   is capped at four steps per frame so a slow frame cannot spiral. The pause menu has Render
   scale, Shadows, Glow and Show FPS (average and worst frame per half second) so a tester can
   isolate GPU load (render scale helps) from hitches (the worst-frame number spikes). Not
-  measured in a browser from here; Jacob's readout decides.
-- **Tests are split into cases** (`tests/cases/`): stats, loot, combat, bench. The smoke test
-  driver runs their unit checks before the scene and their scene checks on the running game.
+  measured in a browser from here; Jacob's readout decides. The same day the pass became the
+  standing rule above: death sounds and the slam ring joined the pool, every pool is built to
+  its cap at warm-up, enemies are recycled through a reserve instead of instantiated per spawn,
+  and the performance case guards all of it.
+- **Tests are split into cases** (`tests/cases/`): stats, loot, combat, bench, effects, perf.
+  The smoke test driver runs their unit checks before the scene and their scene checks on the
+  running game; `-- case=<name>` runs one case alone.
 - All art and audio are generated placeholders, named `placeholder_*`. New enemies and the loot
   reuse the existing sounds with pitch changes.
 
@@ -214,13 +271,15 @@ plan's 3.
 - The gun model can clip into walls when standing right against them.
 - Placeholder sounds are synthesized and rough; new enemies reuse them.
 - Running the smoke test headless prints harmless `mesh_get_surface_count` errors from Godot's dummy
-  renderer, plus a leak warning at exit.
+  renderer.
 - Browser frame rate is unmeasured from the container. If the FPS readout shows a low average,
-  lower Render scale; if the average is fine but the worst frame spikes, the hitches are CPU-side
-  (allocation, physics, or the browser) and the pooling needs extending to whatever still allocates.
+  lower Render scale; if the average is fine but the worst frame spikes, something still allocates
+  or compiles mid-wave. "Performance budget" lists the next levers for each case.
 
 ## Next concrete step
 
 Jacob plays Milestone 3 and reports: did he reach the Warden without guidance, did he equip a
-drop on purpose, and did the compare view make the choice clear. Then Milestone 4: crafting
-table (refine, fuse, transmute), Scrapyard, heavy and Foreman, Epics, waves 11 to 15.
+drop on purpose, did the compare view make the choice clear, and what the FPS readout shows in
+a busy wave (average, worst frame, device, browser). Then Milestone 4: crafting table (refine,
+fuse, transmute), Scrapyard, heavy and Foreman, Epics, waves 11 to 15, each new enemy and effect
+inside the performance budget.

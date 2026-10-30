@@ -19,6 +19,9 @@ const PLAYER_LAYER := 2
 const ENEMY_LAYER := 4
 ## Hits and bounces one round may resolve in a single tick before it is stopped.
 const MAX_EVENTS_PER_TICK := 8
+## Rounds built ahead of the first wave. The pool still grows past this when a fight needs more,
+## but a wave of the planned size never does.
+const WARM_UP_COUNT := 64
 
 enum Team { PLAYER, ENEMY }
 
@@ -29,6 +32,10 @@ var _free: Array[Projectile] = []
 var _live: Array[Projectile] = []
 ## Capsule meshes by radius, so launching a round never builds a mesh (a stall on the web build).
 var _capsules: Dictionary = {}
+## One query object for every sweep: set and reused, never built per tick.
+var _query := PhysicsRayQueryParameters3D.new()
+## The round shown during warm-up, so the projectile shader compiles before the first bolt.
+var _sample: Projectile
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 
 
@@ -118,10 +125,35 @@ func clear_all() -> void:
 		_retire(projectile)
 
 
+## Builds WARM_UP_COUNT rounds and every profile's capsule, and shows one round at `spot` until
+## hide_warm_up_sample() so the projectile shader compiles there (called by FxPool.warm_up under
+## the floor at the first bench).
+func show_warm_up_sample(spot: Vector3) -> void:
+	for profile in PROFILES.values():
+		_capsule_for(float(profile["radius"]))
+	while _free.size() + _live.size() < WARM_UP_COUNT:
+		_free.append(_make())
+	_sample = _free.back()
+	_sample.mesh.mesh = _capsule_for(float(PROFILES["bolt"]["radius"]))
+	_sample.material.albedo_color = Color.WHITE
+	_sample.global_position = spot
+	_sample.visible = true
+
+
+func hide_warm_up_sample() -> void:
+	if _sample != null:
+		_sample.visible = false
+		_sample = null
+
+
 func _physics_process(delta: float) -> void:
-	for projectile in _live.duplicate():
-		if projectile.active:
-			_step(projectile, delta)
+	# Backwards by index: a step may retire its round, or clear the whole pool through a kill, and
+	# this way nothing is copied each tick.
+	var i := _live.size()
+	while i > 0:
+		i -= 1
+		if i < _live.size() and _live[i].active:
+			_step(_live[i], delta)
 
 
 ## Moves one round for a tick: sweep the segment it would cross, resolve what it meets, and keep
@@ -138,8 +170,11 @@ func _step(p: Projectile, delta: float) -> void:
 	var remaining := delta
 	for event in MAX_EVENTS_PER_TICK:
 		var to := from + p.velocity * remaining
-		var query := PhysicsRayQueryParameters3D.create(from, to, p.mask, p.exclude)
-		var hit := space.intersect_ray(query)
+		_query.from = from
+		_query.to = to
+		_query.collision_mask = p.mask
+		_query.exclude = p.exclude
+		var hit := space.intersect_ray(_query)
 		if hit.is_empty():
 			from = to
 			break
@@ -210,20 +245,9 @@ func _acquire() -> Projectile:
 				victim = projectile
 				break
 		_retire(victim if victim else _live[0])
-	var projectile: Projectile
-	if _free.is_empty():
-		projectile = Projectile.new()
-		projectile.mesh = MeshInstance3D.new()
-		projectile.mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		# A capsule points along Y; turn it to point along -Z, the direction look_at faces.
-		projectile.mesh.rotation.x = PI / 2.0
-		projectile.material = StandardMaterial3D.new()
-		projectile.material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		projectile.mesh.material_override = projectile.material
-		projectile.add_child(projectile.mesh)
-		add_child(projectile)
-	else:
-		projectile = _free.pop_back()
+	var projectile: Projectile = _free.pop_back() if not _free.is_empty() else _make()
+	if projectile == _sample:
+		hide_warm_up_sample()
 	projectile.active = true
 	projectile.visible = true
 	projectile.age = 0.0
@@ -231,6 +255,22 @@ func _acquire() -> Projectile:
 	projectile.bounce_count = 0
 	projectile.travelled = 0.0
 	_live.append(projectile)
+	return projectile
+
+
+## One hidden round with its own mesh instance and material (the colour differs per shot).
+func _make() -> Projectile:
+	var projectile := Projectile.new()
+	projectile.mesh = MeshInstance3D.new()
+	projectile.mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# A capsule points along Y; turn it to point along -Z, the direction look_at faces.
+	projectile.mesh.rotation.x = PI / 2.0
+	projectile.material = StandardMaterial3D.new()
+	projectile.material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	projectile.mesh.material_override = projectile.material
+	projectile.add_child(projectile.mesh)
+	projectile.visible = false
+	add_child(projectile)
 	return projectile
 
 

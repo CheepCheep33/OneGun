@@ -74,7 +74,19 @@ godot --headless --path . res://tests/smoke_test.tscn
 ```
 
 It prints PASS/FAIL per check and exits with code 1 if anything failed. It checks logic only; it does
-not replace playing the game. It resets the save in `user://`, so back yours up first.
+not replace playing the game. It resets the save in `user://`, so back yours up first. Add
+`-- case=perf` (or another case file's name) after the scene path to run one case on its own.
+
+**Performance gate.** One of the cases (`tests/cases/perf_cases.gd`) holds the standing rule that no
+milestone may cost frame rate: a second busy combat round must add no nodes, orphan nodes or
+resources and at most a handful of plain objects, every spawn must come from the enemy reserve, the
+shader warm-up must cover every enemy the waves use, and game logic for twice the wave cap must stay
+under 4 ms a frame (scaled to the machine's speed). GAME_PLAN.md, "Performance budget", has the
+reasoning. To see where a frame's time goes by arena load:
+
+```
+godot --headless --path . res://tests/perf_probe.tscn
+```
 
 **Reforge simulation.** The plan's prototype gate: a first run and three consecutive Reforges with
 the real stats function, cost curves and loot tables and a scripted buyer. Prints a table of shots
@@ -93,7 +105,8 @@ and a drop, the Warden, the cleared banner, the Firing Range, the overflow tray 
 xvfb-run godot --path . --rendering-driver opengl3 res://tests/screenshot_tour.tscn -- out_dir=/tmp/shots
 ```
 
-CI runs the smoke test and the Reforge simulation on every push before exporting the web build.
+CI runs the smoke test (with the performance gate) and the Reforge simulation on every push before
+exporting the web build.
 
 ## Project layout
 
@@ -102,5 +115,5 @@ assets/      placeholder audio and textures (named placeholder_*)
 data/        tunable resources: weapon base stats, core tuning, attachment bases and slots, affixes, enemies, waves
 scenes/      main scene, arena, side areas, player, pistol, enemies, UI (HUD, bench, pause menu)
 scripts/     GDScript by responsibility (player, weapons, projectiles, enemies, areas, game, progression, ui, effects)
-tests/       smoke test driver and cases, the Reforge simulation, the screenshot tour
+tests/       smoke test driver and cases, the Reforge simulation, the performance probe, the screenshot tour
 ```
