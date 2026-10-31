@@ -19,6 +19,7 @@ signal skills_changed
 const PISTOL_BASE := preload("res://data/weapons/pistol_base.tres")
 ## Per-kill credits and enemy health step up by this much per wave tier (5 waves each).
 const TIER_STEP := 1.6
+const REFORGE_INCOME_STEP := 4.0
 const WAVES_PER_TIER := 5
 const INVENTORY_SIZE := 40
 const OVERFLOW_SIZE := 20
@@ -156,15 +157,21 @@ static func tier_of_wave(wave: int) -> int:
 	return maxi(wave - 1, 0) / WAVES_PER_TIER
 
 
-## Multiplier for per-kill credits and enemy health at a wave, from the wave tier and Reforge tier.
+## Multiplier for enemy health at a wave, from the wave tier and Reforge tier.
 func reward_multiplier(wave: int) -> float:
+	return pow(TIER_STEP, tier_of_wave(wave)) * pow(WeaponStats.REFORGE_STEP, tier)
+
+
+## Multiplier for per-kill credits: the wave tier, and a Reforge step a little steeper than the
+## enemies' (REFORGE_INCOME_STEP), so the first waves after a Reforge buy back the core levels in
+## about ten minutes now that a first run is twenty waves long (Reforge simulation, Milestone 5).
+func income_multiplier(wave: int) -> float:
 	return pow(TIER_STEP, tier_of_wave(wave)) * bonus_multiplier()
 
 
-## Completion bonuses scale with the Reforge tier only, so they stay worth about three waves of
-## kill income at every tier.
+## Completion bonuses scale with the Reforge tier only, by the same step as kill income.
 func bonus_multiplier() -> float:
-	return pow(WeaponStats.REFORGE_STEP, tier)
+	return pow(REFORGE_INCOME_STEP, tier)
 
 
 func record_kill(credits_paid: int) -> void:

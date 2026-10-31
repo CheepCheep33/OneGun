@@ -14,6 +14,8 @@ const PROFILES := {
 	"ricochet": {"speed": 60.0, "gravity": 0.0, "radius": 0.06, "lifetime": 3.0, "bounces": 2},
 	"charge": {"speed": 90.0, "gravity": 0.0, "radius": 0.1, "lifetime": 3.0, "bounces": 0},
 	"grenade": {"speed": 24.0, "gravity": 1.0, "radius": 0.14, "lifetime": 3.0, "bounces": 0},
+	# The turret's heavy bolt: listed so the warm-up builds its capsule (radius is all it uses).
+	"heavy_bolt": {"speed": 30.0, "gravity": 0.0, "radius": 0.24, "lifetime": 4.0, "bounces": 0},
 }
 const GRENADE_COLOR := Color(0.55, 1.0, 0.35)
 const WORLD_LAYER := 1

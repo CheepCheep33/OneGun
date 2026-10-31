@@ -37,9 +37,8 @@ size = Vector3(2.0, 2.6, 0.2)
 [sub_resource type="StandardMaterial3D" id="Mat_arc"]
 resource_name = "placeholder_boss_arc"
 transparency = 1
-albedo_color = Color(0.45, 0.75, 1, 0.75)
-metallic = 0.4
-roughness = 0.35
+shading_mode = 0
+albedo_color = Color(0.45, 0.75, 1, 0.6)
 
 [sub_resource type="BoxMesh" id="Mesh_arc"]
 material = SubResource("Mat_arc")

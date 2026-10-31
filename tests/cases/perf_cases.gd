@@ -55,6 +55,14 @@ const BEARER := "res://data/enemies/shield_bearer.tres"
 const BEARER_SCENE := "res://scenes/enemies/shield_bearer.tscn"
 const FOREMAN := "res://data/enemies/foreman.tres"
 const FOREMAN_SCENE := "res://scenes/enemies/foreman.tscn"
+const TURRET := "res://data/enemies/turret.tres"
+const TURRET_SCENE := "res://scenes/enemies/turret.tscn"
+const SENTINEL := "res://data/enemies/sentinel.tres"
+const SENTINEL_SCENE := "res://scenes/enemies/sentinel.tscn"
+const GUARDIAN := "res://data/enemies/core_guardian.tres"
+const GUARDIAN_SCENE := "res://scenes/enemies/core_guardian.tscn"
+## Milestone 5's ammo on automatic, a second each: frost and shatters, arcs, burns.
+const M5_AMMO: Array[StringName] = [&"cryo", &"shock", &"incendiary"]
 
 ## Definitions with the drop chance zeroed, so a lucky Common does not land on the floor and read
 ## as a leak. Made once: the second round must not create anything new.
@@ -154,6 +162,7 @@ func run_scene(game: Node) -> void:
 	print("PERF  frame %.2f ms (%.2f process + %.2f physics), worst physics step %.1f ms, budget %.1f ms; %d nodes, %d resources, %d objects after the round" % [cost["frame"], cost["process"], cost["physics"], cost["worst_physics"], budget, after["nodes"], after["resources"], after["objects"]])
 	OS.low_processor_usage_mode_sleep_usec = previous_sleep
 	await _test_milestone_4_round(game)
+	await _test_milestone_5_round(game)
 	game.player.pistol.apply_build(Progression.build_stats(), Progression.equipped())
 	game.open_bench()
 	await physics_frames(2)
@@ -181,6 +190,20 @@ func _test_warm_up_coverage(game: Node) -> void:
 			short.append("%s %d/%d" % [String(path).get_file().get_basename(), runner.reserved_count(path), targets[path]])
 	check(targets.size() == expected.size() and short.is_empty() and runner.reserved_count() >= 16,
 		"the enemy reserve holds what the waves can have alive at once (%d nodes%s)" % [runner.reserved_count(), "" if short.is_empty() else ", short: " + ", ".join(short)])
+	# A lit, see-through material compiled at the Sentinel's first spawn under the GPU gate although
+	# the warm-up drew it: transparent materials in enemy scenes stay unshaded.
+	var lit_transparent: Array[String] = []
+	for path in FxPool.warm_up_scene_paths():
+		var instance: Node = load(path).instantiate()
+		for mesh in instance.find_children("*", "MeshInstance3D", true, false):
+			var material: Material = mesh.material_override
+			if material == null and mesh.mesh != null and mesh.mesh.get_surface_count() > 0:
+				material = mesh.mesh.surface_get_material(0)
+			if material is BaseMaterial3D and material.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED \
+					and material.shading_mode != BaseMaterial3D.SHADING_MODE_UNSHADED:
+				lit_transparent.append("%s:%s" % [path.get_file().get_basename(), mesh.name])
+		instance.free()
+	check(lit_transparent.is_empty(), "no enemy shows a lit see-through material (%s)" % ", ".join(lit_transparent))
 	check(pool != null and pool.warmed_muzzle_light,
 		"the warm-up drew the arena and every sample with the muzzle light on, so no lit shader variant compiles at the first shots")
 	check(pool != null and not pool._numbers.is_empty() and pool._numbers[0].node is Label,
@@ -213,7 +236,8 @@ func _test_drops_from_reserve(game: Node) -> void:
 func _print_spawn_costs(game: Node) -> void:
 	var report := PackedStringArray()
 	for pair in [[CHASER, CHASER_SCENE], [SHOOTER, SHOOTER_SCENE], [DRONE, DRONE_SCENE], [WARDEN, WARDEN_SCENE],
-			[HEAVY, HEAVY_SCENE], [BEARER, BEARER_SCENE], [FOREMAN, FOREMAN_SCENE]]:
+			[HEAVY, HEAVY_SCENE], [BEARER, BEARER_SCENE], [FOREMAN, FOREMAN_SCENE], [TURRET, TURRET_SCENE],
+			[SENTINEL, SENTINEL_SCENE], [GUARDIAN, GUARDIAN_SCENE]]:
 		var definition: EnemyDefinition = load(pair[0])
 		var scene: PackedScene = load(pair[1])
 		var started := Time.get_ticks_usec()
@@ -341,6 +365,94 @@ func _milestone_4_round(game: Node) -> Dictionary:
 	game._clear_drops() # the Foreman is a boss and always drops; the drop goes back to its reserve
 	await physics_frames(2)
 	return {"shells": shells, "summons": summons, "misses": game.wave_runner.reserve_misses - misses_before}
+
+
+## Milestone 5's mid-wave events twice over: Cryo, Shock and Incendiary rounds on automatic into a
+## crowd (frost, shatters, arcs, burns, stuns), a Launcher grenade, the Scanner marking turrets,
+## turrets aiming and firing their heavy bolt, the Sentinel's arcs and sweep, and the Core
+## Guardian's slam, volley, vent and summons, then every death. The second round must build nothing.
+func _test_milestone_5_round(game: Node) -> void:
+	var first := await _milestone_5_round(game)
+	var before := _snapshot()
+	var census := _census()
+	var second := await _milestone_5_round(game)
+	var after := _snapshot()
+	var grew := _census_growth(census, _census())
+	check(first["bolts"] > 0 and second["bolts"] > 0 and second["grenades"] == 1 and second["markers"] > 0 and second["summons"] > 0 and second["misses"] == 0,
+		"a Milestone 5 round is busy and spawns from the reserve: %d enemy bolts, %d grenade, %d scanner markers, %d drones summoned (%d built new)" % [second["bolts"], second["grenades"], second["markers"], second["summons"], second["misses"]])
+	check(after["nodes"] == before["nodes"] and after["orphans"] == before["orphans"] and after["resources"] <= before["resources"]
+		and after["objects"] <= before["objects"] + OBJECT_SLACK,
+		"statuses, grenades, turrets, sweeps, vents and summons allocate nothing the second time (%d -> %d nodes, %d -> %d resources, %d -> %d objects%s)" % [before["nodes"], after["nodes"], before["resources"], after["resources"], before["objects"], after["objects"], "" if grew == "" else "; more in the tree: " + grew])
+
+
+func _milestone_5_round(game: Node) -> Dictionary:
+	var player: Player = game.player
+	var pistol: Pistol = player.pistol
+	var pool: ProjectilePool = game.projectiles
+	player.revive(game.arena.get_player_start())
+	player.health = 1.0e9
+	game.state = game.State.COMBAT
+	var items := _milestone_5_items()
+	var misses_before: int = game.wave_runner.reserve_misses
+	var enemies: Array[Enemy] = []
+	for i in 4:
+		enemies.append(_spawn(game, CHASER, CHASER_SCENE, 5.0, -1.5 + 1.0 * i))
+	var turret: Turret = _spawn(game, TURRET, TURRET_SCENE, 7.0, -4.0)
+	enemies.append(turret)
+	enemies.append(_spawn(game, TURRET, TURRET_SCENE, 7.0, 4.0))
+	var sentinel: Sentinel = _spawn(game, SENTINEL, SENTINEL_SCENE, 10.0, -3.0)
+	enemies.append(sentinel)
+	var guardian: CoreGuardian = _spawn(game, GUARDIAN, GUARDIAN_SCENE, 10.0, 3.0)
+	enemies.append(guardian)
+	for enemy in enemies:
+		enemy.health = 1.0e9
+		if enemy is Turret:
+			enemy._cooldown_left = 0.0
+	var build := {"receiver": _automatic, "optic": items["scanner"], "underbarrel": items["launcher"], "ammo": items["cryo"]}
+	pistol.apply_build(WeaponStats.build(Progression.PISTOL_BASE, Progression.core_levels(), build), build)
+	await seconds(Enemy.SPAWN_TIME + 0.1)
+	var bolts_before := pool.live_count()
+	var markers: int = game.hud.visible_scan_markers()
+	sentinel.sweep.start(player.global_position, sentinel.global_position)
+	guardian._slam()
+	guardian._fire_volley()
+	for ammo in M5_AMMO:
+		build["ammo"] = items[ammo]
+		pistol.apply_build(WeaponStats.build(Progression.PISTOL_BASE, Progression.core_levels(), build), build)
+		pistol.request_fire()
+		await seconds(1.0)
+		pistol.release_fire()
+	pistol.grenades = 1
+	var grenades := 1 if pistol.request_alt_fire() else 0
+	var bolts := pool.live_count() - bolts_before + 5 # the volley's five, some of which may have landed
+	# The vent, then the summoning phase.
+	guardian._start_vent()
+	await seconds(0.5)
+	guardian._end_vent()
+	guardian.fight_phase = 2
+	guardian._summon_cooldown = 0.0
+	await seconds(CoreGuardian.SUMMON_TELEGRAPH + 0.5)
+	var summons: int = game.wave_runner.summon_count()
+	for enemy in game.wave_runner.living_enemies():
+		if not enemy.summoned:
+			enemy.take_hit(1.0e12, enemy.global_position, Vector3.FORWARD)
+	await seconds(SETTLE_SECONDS)
+	pool.clear_all()
+	game.wave_runner.clear_enemies()
+	game._clear_drops()
+	game.hud.clear_scan_targets()
+	await physics_frames(2)
+	return {"bolts": bolts, "grenades": grenades, "markers": markers, "summons": summons, "misses": game.wave_runner.reserve_misses - misses_before}
+
+
+## Made once, so the second round creates no items.
+func _milestone_5_items() -> Dictionary:
+	if not _definitions.has("m5_items"):
+		var items := {"scanner": Items.make(&"scanner"), "launcher": Items.make(&"launcher")}
+		for ammo in M5_AMMO:
+			items[ammo] = Items.make(ammo)
+		_definitions["m5_items"] = items
+	return _definitions["m5_items"]
 
 
 ## Made once, so the second round creates no items.

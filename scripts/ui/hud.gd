@@ -458,7 +458,7 @@ func gun_status() -> String:
 
 ## The Scanner's reading of the robot under the crosshair; an empty name clears it.
 func set_scan(name: String, health: float, maximum: float) -> void:
-	_scan_label.text = "" if name == "" else "%s  %d / %d" % [name.to_upper(), ceili(health), roundi(maximum)]
+	_scan_label.text = "" if name == "" else "%s  %d / %d" % [name.to_upper(), mini(ceili(health - 0.001), roundi(maximum)), roundi(maximum)]
 
 
 func scan_text() -> String:

@@ -303,7 +303,7 @@ func _visual_glow() -> Color:
 				return SWEEP_COLOR * (0.5 + 2.0 * clampf(_phase_time / sweep.telegraph, 0.0, 1.0))
 			return SWEEP_COLOR * 1.5
 		Phase.VENT:
-			return VENT_COLOR * 0.8
+			return VENT_COLOR * 0.25 # dim, so the open core reads against the body
 	return Color.BLACK
 
 

@@ -37,6 +37,7 @@ var _combat_started := false
 var _pending_wave: WaveDefinition
 ## Health and credit multiplier for the pending encounter: the wave's, or a side area's.
 var _pending_scale := 1.0
+var _pending_income := 1.0
 var _boss: Enemy
 var _drop_reserve: Array[LootDrop] = []
 ## Drops built by _spawn_drop because the reserve was empty (the performance gate expects zero).
@@ -134,7 +135,7 @@ func _process(_delta: float) -> void:
 		_combat_started = true
 		# The Signal Tower starts its floors itself (floor_started), with their modifiers.
 		if not arena.has_signal("floor_started"):
-			wave_runner.start(_pending_wave, _pending_scale)
+			wave_runner.start(_pending_wave, _pending_scale, _pending_income)
 		if state == State.AREA and arena.has_method("start_run"):
 			arena.start_run()
 	hud.set_capture_prompt_visible(not has_control and not _had_control)
@@ -203,6 +204,7 @@ func start_wave(number: int) -> void:
 	Progression.refresh_intermission()
 	_pending_wave = wave
 	_pending_scale = Progression.reward_multiplier(number)
+	_pending_income = Progression.income_multiplier(number)
 	_combat_started = false
 	_reset_encounter()
 	state = State.COMBAT
@@ -247,7 +249,9 @@ func enter_area(area_id: String) -> void:
 		kills = 0
 		hud.set_kills(kills)
 		_pending_wave = arena.encounter_wave()
-		_pending_scale = Progression.reward_multiplier(clampi(Progression.next_wave(), 1, WaveRunner.WAVE_COUNT))
+		var level := clampi(Progression.next_wave(), 1, WaveRunner.WAVE_COUNT)
+		_pending_scale = Progression.reward_multiplier(level)
+		_pending_income = Progression.income_multiplier(level)
 	hud.set_wave_text(String(AREA_NAMES.get(area_id, area_id)).to_upper(), "Esc, then Leave, returns to the bench")
 	hud.set_wave_progress_text(arena.status_text() if arena.has_method("status_text") else "")
 	hud.set_combat_visible(true)
@@ -624,7 +628,7 @@ func _on_floor_started(wave: WaveDefinition, modifiers: Dictionary) -> void:
 		return
 	_pending_wave = wave
 	_set_encounter_modifiers(modifiers)
-	wave_runner.start(wave, _pending_scale)
+	wave_runner.start(wave, _pending_scale, _pending_income)
 
 
 ## Standing on a lit loadout pad opens the gunsmith in pad mode; the game waits there.

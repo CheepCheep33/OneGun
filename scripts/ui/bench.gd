@@ -58,6 +58,8 @@ var _transmute_button: Button
 var _skill_buttons: Dictionary = {} # skill id (String) -> Button
 var _skill_header: Label
 var _respec_button: Button
+## The description of the node last pointed at or pressed (tooltips do not exist on touch).
+var _skill_detail: Label
 var _skill_tab_button: Button
 var _story_tab_button: Button
 var _story_list: VBoxContainer
@@ -344,6 +346,7 @@ func _build_skills_view() -> void:
 	for tree in Skills.TREES:
 		var column := VBoxContainer.new()
 		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		column.custom_minimum_size = Vector2(100, 0)
 		column.add_theme_constant_override("separation", 3)
 		var title := _heading(String(Skills.TREE_NAMES[String(tree)]).to_upper())
 		title.tooltip_text = String(Skills.TREE_THEMES.get(String(tree), ""))
@@ -351,17 +354,31 @@ func _build_skills_view() -> void:
 		column.add_child(title)
 		for node in Skills.nodes_of(tree):
 			var button := Button.new()
-			button.custom_minimum_size = Vector2(0, 40)
+			# One line, clipped: wrapping inside a column that starts at no width made each button
+			# as tall as its letters.
+			button.custom_minimum_size = Vector2(0, 34)
 			button.toggle_mode = true
 			button.clip_text = true
-			button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			button.add_theme_font_size_override("font_size", 11)
 			button.pressed.connect(_on_skill_pressed.bind(node.id))
+			button.mouse_entered.connect(_show_skill_detail.bind(node.id))
 			column.add_child(button)
 			_skill_buttons[String(node.id)] = button
 		columns.add_child(column)
 	view.add_child(columns)
+	_skill_detail = _small_label("Point at a node to read it. Each tree opens tier by tier: two points in a tree open its next tier, and the capstone needs the other eight.", 12)
+	_skill_detail.add_theme_color_override("font_color", Color(0.8, 0.86, 0.92))
+	view.add_child(_skill_detail)
 	_tab_views["skills"] = _wrap_in_scroll(view)
+
+
+func _show_skill_detail(id: StringName) -> void:
+	var definition := Skills.get_definition(id)
+	if definition == null:
+		return
+	var reason := Progression.skill_block_reason(id)
+	var state := "Taken" if Progression.has_skill(id) else (reason if reason != "" else "Open: click to take (1 point)")
+	_skill_detail.text = "%s  ·  %s\n%s" % [definition.display_name, state, definition.description]
 
 
 func _build_story_view() -> void:
@@ -1173,6 +1190,7 @@ func _on_skill_pressed(id: StringName) -> void:
 	if Progression.take_skill(id):
 		Progression.save()
 	refresh()
+	_show_skill_detail(id)
 
 
 func _on_respec_pressed() -> void:

@@ -100,7 +100,7 @@ func _fire() -> void:
 	_fire_sound.pitch_scale = randf_range(0.6, 0.7)
 	_fire_sound.play()
 	pool.fire_enemy_bolt(self, origin, direction * definition.projectile_speed, definition.attack_damage,
-		BOLT_COLOR, definition.projectile_lifetime, 0.24)
+		BOLT_COLOR, definition.projectile_lifetime, float(ProjectilePool.PROFILES["heavy_bolt"]["radius"]))
 
 
 func _on_death() -> void:

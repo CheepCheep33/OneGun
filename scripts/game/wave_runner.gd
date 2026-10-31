@@ -36,8 +36,11 @@ const WARM_UP_PER_FRAME := 2
 var current: WaveDefinition
 var running := false
 var elapsed := 0.0
-## Multiplier for enemy health and credits this wave (wave tier and Reforge tier).
+## Multiplier for enemy health this wave (wave tier and Reforge tier).
 var scale := 1.0
+## Multiplier for the credits a kill pays (Progression.income_multiplier); its Reforge step is
+## steeper than the enemies'.
+var income_scale := 1.0
 ## The encounter's modifiers for every robot it spawns (the Signal Tower's floors): a movement
 ## speed multiplier and extra flat armour. The game sets them; 1 and 0 for the main waves.
 var speed_modifier := 1.0
@@ -156,10 +159,11 @@ func reserved_count(scene_path := "") -> int:
 
 
 ## Clears any leftover enemies and starts the wave. Spawning waits for the first physics tick.
-func start(wave: WaveDefinition, reward_scale := 1.0) -> void:
+func start(wave: WaveDefinition, reward_scale := 1.0, credit_scale := -1.0) -> void:
 	clear_enemies()
 	current = wave
 	scale = reward_scale
+	income_scale = credit_scale if credit_scale >= 0.0 else reward_scale
 	elapsed = 0.0
 	_spawned = 0
 	_killed = 0
@@ -357,7 +361,7 @@ func dismiss_summons() -> void:
 
 
 func _on_enemy_died(enemy: Enemy) -> void:
-	var credits := maxi(roundi(enemy.definition.credit_reward * scale), 1)
+	var credits := maxi(roundi(enemy.definition.credit_reward * income_scale), 1)
 	enemy_killed.emit(enemy, credits)
 	if enemy.definition.is_boss:
 		dismiss_summons.call_deferred()
