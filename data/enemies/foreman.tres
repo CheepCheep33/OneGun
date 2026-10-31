@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="EnemyDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/enemy_definition.gd" id="1_def"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/swarm_drone.tscn" id="2_drone_scene"]
+[ext_resource type="Resource" path="res://data/enemies/swarm_drone.tres" id="3_drone"]
+
+[resource]
+script = ExtResource("1_def")
+id = &"foreman"
+display_name = "Foreman"
+max_health = 700.0
+move_speed = 2.2
+attack_damage = 12.0
+attack_range = 13.0
+attack_windup = 0.8
+attack_cooldown = 2.4
+credit_reward = 120
+color = Color(0.92, 0.72, 0.18, 1)
+counts_as = 2.0
+is_boss = true
+armor = 2.0
+ranged = true
+preferred_range = 13.0
+retreat_range = 7.0
+max_fire_range = 22.0
+spread_near_degrees = 2.0
+spread_far_degrees = 6.0
+projectile_speed = 15.0
+projectile_lifetime = 4.0
+summon_scene = ExtResource("2_drone_scene")
+summon_definition = ExtResource("3_drone")
+max_summons = 6

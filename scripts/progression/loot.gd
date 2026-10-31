@@ -9,9 +9,8 @@ const COMMON_CHANCE := 1.0 / 12.0
 const UNCOMMON_CHANCE := 1.0 / 50.0
 ## One guaranteed Uncommon per first wave clear.
 const FIRST_CLEAR_RARITY := Items.Rarity.UNCOMMON
-## Bosses drop a Rare in Milestone 3. The plan's first-clear Epic arrives with Epics in Milestone 4;
-## a replayed boss drops a Rare in every milestone.
-const BOSS_FIRST_CLEAR_RARITY := Items.Rarity.RARE
+## Bosses drop an Epic on first clear and a Rare on replay (plan: the replay rule beats the boss Epic).
+const BOSS_FIRST_CLEAR_RARITY := Items.Rarity.EPIC
 const BOSS_REPLAY_RARITY := Items.Rarity.RARE
 ## Replays of any wave drop Common and Uncommon loot only.
 const REPLAY_MAX_RARITY := Items.Rarity.UNCOMMON
@@ -26,6 +25,9 @@ static func roll_kill_drop(definition: EnemyDefinition, bases: Array[AttachmentD
 	var rarity: int
 	if definition.is_boss:
 		rarity = BOSS_REPLAY_RARITY if is_replay else BOSS_FIRST_CLEAR_RARITY
+	elif definition.rare_chance > 0.0 and rng.randf() < definition.rare_chance:
+		# Armoured enemies roll their Rare first (plan: loot roles follow the roster).
+		rarity = Items.Rarity.RARE
 	else:
 		var roll := rng.randf()
 		var uncommon := UNCOMMON_CHANCE * definition.loot_weight

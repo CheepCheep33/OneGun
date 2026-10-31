@@ -9,8 +9,13 @@ enum State { BENCH, COMBAT, CLEARED, DEAD, AREA }
 ## How long the "wave cleared" banner stays before the bench opens.
 const CLEARED_BANNER_TIME := 2.6
 const MAIN_ARENA := preload("res://scenes/arena/arena.tscn")
-const AREA_SCENES := {"firing_range": "res://scenes/areas/firing_range.tscn"}
-const AREA_NAMES := {"firing_range": "Firing Range"}
+const AREA_SCENES := {
+	"firing_range": "res://scenes/areas/firing_range.tscn",
+	"scrapyard": "res://scenes/areas/scrapyard.tscn",
+}
+const AREA_NAMES := {"firing_range": "Firing Range", "scrapyard": "Scrapyard"}
+## The first Scrapyard extraction recovers this log (the story itself arrives with Milestone 5).
+const SCRAPYARD_LOG := "Salvage log: calibration unit 06 scrapped after failing the Foreman's test."
 ## Drop nodes kept ready outside the tree, so a drop landing mid-wave builds nothing.
 const DROP_RESERVE := 12
 
@@ -27,6 +32,8 @@ var _had_control := false
 ## Enemies start spawning once the player has control, so nothing attacks while waiting for that click.
 var _combat_started := false
 var _pending_wave: WaveDefinition
+## Health and credit multiplier for the pending encounter: the wave's, or a side area's.
+var _pending_scale := 1.0
 var _boss: Enemy
 var _drop_reserve: Array[LootDrop] = []
 ## Drops built by _spawn_drop because the reserve was empty (the performance gate expects zero).
@@ -58,7 +65,7 @@ func _ready() -> void:
 	player.pistol.hit_landed.connect(hud.show_hit_marker)
 	wave_runner.setup(player, arena)
 	wave_runner.enemy_killed.connect(_on_enemy_killed)
-	wave_runner.remaining_changed.connect(hud.set_wave_progress)
+	wave_runner.remaining_changed.connect(_on_remaining_changed)
 	wave_runner.wave_cleared.connect(_on_wave_cleared)
 	wave_runner.boss_spawned.connect(_on_boss_spawned)
 	hud.bench_requested.connect(open_bench)
@@ -112,7 +119,9 @@ func _process(_delta: float) -> void:
 	_had_control = _had_control or has_control
 	if has_control and not _combat_started and _pending_wave:
 		_combat_started = true
-		wave_runner.start(_pending_wave, Progression.reward_multiplier(current_wave))
+		wave_runner.start(_pending_wave, _pending_scale)
+		if state == State.AREA and arena.has_method("start_run"):
+			arena.start_run()
 	hud.set_capture_prompt_visible(not has_control and not _had_control)
 	# Browsers release the mouse on Esc without sending the key to the game; treat any lost capture as a pause.
 	if _had_control and not has_control:
@@ -175,6 +184,7 @@ func start_wave(number: int) -> void:
 	current_wave = number
 	kills = 0
 	_pending_wave = wave
+	_pending_scale = Progression.reward_multiplier(number)
 	_combat_started = false
 	_reset_encounter()
 	state = State.COMBAT
@@ -204,6 +214,16 @@ func enter_area(area_id: String) -> void:
 		arena.setup(player)
 	if arena.has_signal("status_changed"):
 		arena.status_changed.connect(hud.set_wave_progress_text)
+	if arena.has_signal("extracted"):
+		arena.extracted.connect(_on_area_extracted)
+	# An area with a spawn schedule (the Scrapyard) runs it on the wave runner once the player has
+	# control, scaled like the next wave the player would fight.
+	if arena.has_method("encounter_wave"):
+		current_wave = 0
+		kills = 0
+		hud.set_kills(kills)
+		_pending_wave = arena.encounter_wave()
+		_pending_scale = Progression.reward_multiplier(clampi(Progression.next_wave(), 1, WaveRunner.WAVE_COUNT))
 	hud.set_wave_text(String(AREA_NAMES.get(area_id, area_id)).to_upper(), "Esc, then Leave, returns to the bench")
 	hud.set_wave_progress_text(arena.status_text() if arena.has_method("status_text") else "")
 	hud.set_combat_visible(true)
@@ -286,10 +306,15 @@ func _on_enemy_killed(enemy: Enemy, credits: int) -> void:
 	hud.set_kills(kills)
 	Progression.record_kill(credits)
 	hud.show_credit_gain(credits)
-	if state != State.COMBAT:
+	# A boss's adds pay credits but drop nothing, so a boss fight cannot be farmed for loot.
+	if enemy.summoned:
 		return
-	# Drops commit the moment the enemy dies (plan: rewards paid once per source).
-	var replay := Progression.is_wave_cleared(current_wave)
+	var in_salvage := state == State.AREA and _pending_wave != null
+	if state != State.COMBAT and not in_salvage:
+		return
+	# Drops commit the moment the enemy dies (plan: rewards paid once per source). A side area's
+	# kills drop like a replay (Common and Uncommon); its own reward is the Rare on extraction.
+	var replay := in_salvage or Progression.is_wave_cleared(current_wave)
 	var item := Progression.roll_kill_drop(enemy.definition, replay)
 	if item.is_empty():
 		return
@@ -384,6 +409,12 @@ func _exit_tree() -> void:
 	_drop_reserve.clear()
 
 
+## A side area's spawn schedule is not a wave to clear: its status line stays the area's own.
+func _on_remaining_changed(remaining: int, total: int) -> void:
+	if state != State.AREA:
+		hud.set_wave_progress(remaining, total)
+
+
 func _on_wave_cleared(wave: WaveDefinition, duration: float) -> void:
 	if state != State.COMBAT:
 		return
@@ -404,6 +435,35 @@ func _on_wave_cleared(wave: WaveDefinition, duration: float) -> void:
 		open_bench()
 
 
+## The Scrapyard's door pad: the run pays its parts and Rare, the floor loot is collected and the
+## bench opens after the banner (plan: side areas, outcomes are explicit).
+func _on_area_extracted(cores: int, seconds: float) -> void:
+	if state != State.AREA:
+		return
+	state = State.CLEARED
+	wave_runner.stop()
+	wave_runner.clear_enemies()
+	projectiles.clear_all()
+	for drop in drops.get_children():
+		if drop is LootDrop:
+			drop.collect()
+	var result := Progression.record_scrapyard_extraction(cores, seconds)
+	var lines := PackedStringArray(["%d scrap cores" % cores])
+	var parts: Dictionary = result["parts"]
+	if not parts.is_empty():
+		lines[0] += "  ·  +" + Crafting.describe_cost(parts)
+	var reward: Dictionary = result["reward"]
+	if not reward.is_empty():
+		lines.append("+ %s  ·  %s" % [Items.display_name(reward), Items.rarity_name(reward)])
+	if result["first"]:
+		lines.append(SCRAPYARD_LOG)
+	hud.show_banner("EXTRACTED", "\n".join(lines))
+	var timer := get_tree().create_timer(CLEARED_BANNER_TIME + (1.5 if result["first"] else 0.0), false)
+	await timer.timeout
+	if state == State.CLEARED:
+		open_bench()
+
+
 func _on_player_died() -> void:
 	state = State.DEAD
 	wave_runner.stop()
@@ -412,7 +472,10 @@ func _on_player_died() -> void:
 	touch_controls.set_enabled(false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	Progression.record_death(current_wave, wave_runner.elapsed)
-	hud.show_death(current_wave, kills, Progression.credits)
+	if current_area != "":
+		hud.show_death(current_wave, kills, Progression.credits, String(AREA_NAMES.get(current_area, current_area)))
+	else:
+		hud.show_death(current_wave, kills, Progression.credits)
 
 
 func _on_boss_spawned(enemy: Enemy) -> void:

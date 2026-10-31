@@ -54,6 +54,10 @@ and measurements live in GAME_PLAN.md under "Performance budget". In short:
   untyped Array (declare `Array[RID]` first); const dictionaries are read-only; headless Godot
   sleeps about 7 ms every frame (`OS.low_processor_usage_mode_sleep_usec`) and the Performance
   time monitors hold the worst frame of the last second, so measure frame costs the way
-  `perf_cases.gd` does.
+  `perf_cases.gd` does. A lambda captures locals by value: assigning to one inside it does not
+  reach the caller (append to an array instead).
+- Physics layers: 1 world, 2 player, 3 enemies, 4 shields (player rays and rounds only).
+- Smoke cases run in the driver's order on one game; a scene case leaves wave 1 started with its
+  spawns stopped. `-- case=a+b` runs several cases in order to reproduce an interaction.
 - The web build has no thread support and no shader cache; every runtime allocation, mesh
   upload and first-use material is a visible hitch there.

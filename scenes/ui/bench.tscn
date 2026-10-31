@@ -122,38 +122,68 @@ theme_override_constants/margin_bottom = 10
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Heading" type="Label" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
+[node name="TabRow" type="HBoxContainer" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
-theme_override_font_sizes/font_size = 18
+theme_override_constants/separation = 6
+
+[node name="CoreTabButton" type="Button" parent="Margin/VBox/Body/CorePanel/Margin/VBox/TabRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 15
+toggle_mode = true
+button_pressed = true
 text = "CORE TUNING"
 
-[node name="Blurb" type="Label" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
+[node name="CraftTabButton" type="Button" parent="Margin/VBox/Body/CorePanel/Margin/VBox/TabRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 15
+toggle_mode = true
+text = "CRAFTING TABLE"
+
+[node name="CoreView" type="VBoxContainer" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="Blurb" type="Label" parent="Margin/VBox/Body/CorePanel/Margin/VBox/CoreView"]
 layout_mode = 2
 modulate = Color(1, 1, 1, 0.7)
 theme_override_font_sizes/font_size = 12
 text = "Numbers only, never behaviour. Always safe to buy. Prices rise 15% per level."
 autowrap_mode = 3
 
-[node name="CoreRows" type="VBoxContainer" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
+[node name="CoreRows" type="VBoxContainer" parent="Margin/VBox/Body/CorePanel/Margin/VBox/CoreView"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="Separator" type="HSeparator" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
+[node name="Separator" type="HSeparator" parent="Margin/VBox/Body/CorePanel/Margin/VBox/CoreView"]
 layout_mode = 2
 
-[node name="SummaryHeading" type="Label" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
+[node name="SummaryHeading" type="Label" parent="Margin/VBox/Body/CorePanel/Margin/VBox/CoreView"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
 theme_override_font_sizes/font_size = 15
 text = "YOUR PISTOL"
 
-[node name="StatsSummary" type="Label" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
+[node name="StatsSummary" type="Label" parent="Margin/VBox/Body/CorePanel/Margin/VBox/CoreView"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_font_sizes/font_size = 14
 text = "Damage per shot   10"
+
+[node name="CraftView" type="VBoxContainer" parent="Margin/VBox/Body/CorePanel/Margin/VBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 6
 
 [node name="GunsmithPanel" type="PanelContainer" parent="Margin/VBox/Body"]
 layout_mode = 2
@@ -354,15 +384,21 @@ theme_override_colors/font_color = Color(0.7, 0.85, 1, 1)
 theme_override_font_sizes/font_size = 18
 text = "WAVES"
 
-[node name="WaveList" type="VBoxContainer" parent="Margin/VBox/Body/WavesPanel/Margin/VBox"]
+[node name="WaveScroll" type="ScrollContainer" parent="Margin/VBox/Body/WavesPanel/Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="WaveList" type="VBoxContainer" parent="Margin/VBox/Body/WavesPanel/Margin/VBox/WaveScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/separation = 3
 
 [node name="WaveNote" type="Label" parent="Margin/VBox/Body/WavesPanel/Margin/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
-size_flags_vertical = 3
 modulate = Color(1, 1, 1, 0.7)
 theme_override_font_sizes/font_size = 12
 text = "Clear a wave to unlock the next."

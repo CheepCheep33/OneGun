@@ -1,7 +1,7 @@
 class_name FxPool
 extends Node3D
-## The pool behind Fx: tracers, impact sparks, damage numbers, death bursts, death sounds and the
-## Warden's slam ring are fixed sets of nodes with shared meshes and materials, shown and hidden
+## The pool behind Fx: tracers, impact sparks, damage numbers, death bursts, death sounds, the
+## Warden's slam ring and explosive blasts are fixed sets of nodes with shared meshes and materials, shown and hidden
 ## instead of created and freed. One pool lives under the running scene (Fx makes it on first use)
 ## and ages every active effect in one _process. This exists for the browser build: every
 ## allocation, mesh upload and first-use shader compile there lands on the single main thread and
@@ -26,17 +26,23 @@ const KILL_FONT_SIZE := 30
 const NUMBER_OUTLINE := 6
 const NUMBER_COLOR := Color(1.0, 0.95, 0.75)
 const KILL_COLOR := Color(1.0, 0.55, 0.3)
+## Weak-point hits: the kill size (so no new glyph size enters the font atlas), in yellow.
+const WEAK_COLOR := Color(1.0, 0.9, 0.2)
 const LABEL_FONT_SIZE := 16
 const LABEL_OUTLINE := 5
 const BURST_LIFETIME := 0.7
 const RING_START_SCALE := 0.3
 const RING_ALPHA := 0.85
+const BLAST_TIME := 0.22
+## Added onto the scene, so overlapping blasts read as a bright flash rather than an orange wall.
+const BLAST_COLOR := Color(1.0, 0.5, 0.15, 0.22)
 const MAX_TRACERS := 24
 const MAX_IMPACTS := 24
 const MAX_NUMBERS := 24
 const MAX_BURSTS := 8
 const MAX_SOUNDS := 8
 const MAX_RINGS := 2
+const MAX_BLASTS := 8
 ## Name tags that follow a node (floor drops); as many as the game's drop reserve.
 const MAX_LABELS := 12
 const TRACER_COLOR := Color(1.0, 0.9, 0.55, 0.7)
@@ -65,7 +71,7 @@ class Entry:
 	var anchor := Vector3.ZERO
 	## Labels: the node they follow.
 	var owner: Node3D
-	## Rings: the radius to grow to.
+	## Rings and blasts: the radius to grow to.
 	var size := 1.0
 
 
@@ -82,12 +88,15 @@ var _impact_mesh := SphereMesh.new()
 var _impact_material := StandardMaterial3D.new()
 var _burst_mesh := BoxMesh.new()
 var _ring_mesh := TorusMesh.new()
+var _blast_mesh := SphereMesh.new()
+var _blast_material := StandardMaterial3D.new()
 ## Holds every 2D label; the first child of the HUD's layer once set_label_parent ran (drawn under
 ## the HUD's own items), otherwise under a canvas layer of the pool's own.
 var _label_root := Control.new()
 var _own_canvas: CanvasLayer
 var _number_settings := LabelSettings.new()
 var _kill_settings := LabelSettings.new()
+var _weak_settings := LabelSettings.new()
 var _label_settings := LabelSettings.new()
 var _tracers: Array[Entry] = []
 var _impacts: Array[Entry] = []
@@ -96,6 +105,7 @@ var _labels: Array[Entry] = []
 var _bursts: Array[Entry] = []
 var _sounds: Array[Entry] = []
 var _rings: Array[Entry] = []
+var _blasts: Array[Entry] = []
 
 
 func _ready() -> void:
@@ -118,6 +128,14 @@ func _ready() -> void:
 	_ring_mesh.outer_radius = 1.0
 	_ring_mesh.rings = 32
 	_ring_mesh.ring_segments = 6
+	_blast_mesh.radius = 1.0
+	_blast_mesh.height = 2.0
+	_blast_mesh.radial_segments = 16
+	_blast_mesh.rings = 8
+	_blast_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_blast_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_blast_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_blast_material.albedo_color = BLAST_COLOR
 	_label_root.name = "WorldLabels"
 	_label_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_label_root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -126,13 +144,15 @@ func _ready() -> void:
 	_own_canvas.layer = 0
 	add_child(_own_canvas)
 	_own_canvas.add_child(_label_root)
-	for settings: LabelSettings in [_number_settings, _kill_settings, _label_settings]:
+	for settings: LabelSettings in [_number_settings, _kill_settings, _weak_settings, _label_settings]:
 		settings.outline_size = NUMBER_OUTLINE
 		settings.outline_color = Color(0.0, 0.0, 0.0, 0.9)
 	_number_settings.font_size = NUMBER_FONT_SIZE
 	_number_settings.font_color = NUMBER_COLOR
 	_kill_settings.font_size = KILL_FONT_SIZE
 	_kill_settings.font_color = KILL_COLOR
+	_weak_settings.font_size = KILL_FONT_SIZE
+	_weak_settings.font_color = WEAK_COLOR
 	_label_settings.font_size = LABEL_FONT_SIZE
 	_label_settings.outline_size = LABEL_OUTLINE
 
@@ -161,6 +181,9 @@ static func warm_up_scene_paths() -> Array[String]:
 		for group in wave.groups:
 			if group.enemy_scene != null and not paths.has(group.enemy_scene.resource_path):
 				paths.append(group.enemy_scene.resource_path)
+			var summon := group.definition.summon_scene if group.definition else null
+			if summon != null and not paths.has(summon.resource_path):
+				paths.append(summon.resource_path)
 	for path in EXTRA_WARM_UP_SCENES:
 		if not paths.has(path):
 			paths.append(path)
@@ -171,7 +194,7 @@ static func warm_up_scene_paths() -> Array[String]:
 
 func active_count() -> int:
 	var count := 0
-	for pool in [_tracers, _impacts, _numbers, _labels, _bursts, _sounds, _rings]:
+	for pool in [_tracers, _impacts, _numbers, _labels, _bursts, _sounds, _rings, _blasts]:
 		for entry in pool:
 			if entry.active:
 				count += 1
@@ -181,7 +204,7 @@ func active_count() -> int:
 ## Every pooled node, in the 3D pools and among the labels.
 func pooled_count() -> int:
 	var count := 0
-	for pool in [_tracers, _impacts, _numbers, _labels, _bursts, _sounds, _rings]:
+	for pool in [_tracers, _impacts, _numbers, _labels, _bursts, _sounds, _rings, _blasts]:
 		count += pool.size()
 	return count
 
@@ -208,13 +231,13 @@ func impact(position: Vector3, normal: Vector3) -> void:
 
 
 ## A number that rises from a world position and fades, drawn on the canvas under the HUD.
-func damage_number(position: Vector3, amount: float, killed: bool) -> void:
+func damage_number(position: Vector3, amount: float, killed: bool, weak := false) -> void:
 	var entry := _acquire(_numbers, MAX_NUMBERS, _make_number)
 	entry.life = NUMBER_TIME
 	entry.anchor = position + Vector3(randf_range(-0.15, 0.15), 0.2, randf_range(-0.15, 0.15))
 	var label: Label = entry.node
 	label.text = str(roundi(amount))
-	label.label_settings = _kill_settings if killed else _number_settings
+	label.label_settings = _weak_settings if weak else (_kill_settings if killed else _number_settings)
 	label.modulate = Color.WHITE
 	_place_number(entry, 0.0)
 
@@ -280,6 +303,17 @@ func ring(position: Vector3, radius: float, color: Color, duration := 0.4) -> vo
 	node.scale = Vector3.ONE * RING_START_SCALE
 
 
+## A sphere that swells from small to `radius` over BLAST_TIME and vanishes: an explosive round's
+## blast. Scale only, so no material parameter is written per frame.
+func blast(position: Vector3, radius: float) -> void:
+	var entry := _acquire(_blasts, MAX_BLASTS, _make_blast)
+	entry.life = BLAST_TIME
+	entry.size = maxf(radius, 0.1)
+	var node: Node3D = entry.node
+	node.global_position = position
+	node.scale = Vector3.ONE * entry.size * 0.25
+
+
 ## Builds every pool to its cap, then draws one of every effect, projectile, enemy and drop for a
 ## few frames so their shaders compile now, not in the first wave. Everything sits under the floor
 ## in front of the camera. With `gun`, the first frames are drawn with its muzzle light reaching
@@ -298,6 +332,7 @@ func warm_up(camera: Camera3D, gun: Pistol = null, new_label_parent: Node = null
 	_fill(_bursts, MAX_BURSTS, _make_burst)
 	_fill(_sounds, MAX_SOUNDS, _make_sound)
 	_fill(_rings, MAX_RINGS, _make_ring)
+	_fill(_blasts, MAX_BLASTS, _make_blast)
 	LootDrop.warm_up_materials()
 	var forward := -camera.global_basis.z
 	forward.y = 0.0
@@ -308,9 +343,13 @@ func warm_up(camera: Camera3D, gun: Pistol = null, new_label_parent: Node = null
 	impact(spot, Vector3.UP)
 	burst(spot, Color.WHITE)
 	ring(spot, 1.0, Color.WHITE, 0.3)
+	blast(spot, 0.4)
+	for entry in _blasts:
+		entry.life = INF # held for the warm-up's frames, released with the rest
 	# Every digit at both sizes goes into the font atlas now; the labels draw invisibly.
 	damage_number(spot, 1234567890, false)
 	damage_number(spot, 1234567890, true)
+	damage_number(spot, 1234567890, true, true)
 	for entry in _numbers:
 		if entry.active:
 			(entry.node as Label).modulate = Color(1.0, 1.0, 1.0, 0.0)
@@ -322,9 +361,10 @@ func warm_up(camera: Camera3D, gun: Pistol = null, new_label_parent: Node = null
 	for path in warmed_scenes:
 		var enemy: Node3D = load(path).instantiate()
 		enemy.process_mode = Node.PROCESS_MODE_DISABLED
-		_show_hidden_meshes(enemy) # telegraphs such as the Warden's ring start hidden
 		add_child(enemy)
 		enemy.global_position = spot
+		# After _ready, which hides telegraphs such as the Warden's ring and the Foreman's pools.
+		_show_hidden_meshes(enemy, spot)
 		extras.append(enemy)
 	var sample := Items.make(&"long_barrel", Items.Rarity.UNCOMMON)
 	var drop := LootDrop.create(sample)
@@ -349,7 +389,7 @@ func warm_up(camera: Camera3D, gun: Pistol = null, new_label_parent: Node = null
 			extra.queue_free()
 	if is_instance_valid(projectiles):
 		projectiles.hide_warm_up_sample()
-	for pool in [_tracers, _impacts, _numbers, _labels, _bursts, _sounds, _rings]:
+	for pool in [_tracers, _impacts, _numbers, _labels, _bursts, _sounds, _rings, _blasts]:
 		for entry in pool:
 			_release(entry)
 
@@ -409,6 +449,14 @@ func _process(delta: float) -> void:
 				node.scale = Vector3(grown, RING_START_SCALE, grown)
 				var material: StandardMaterial3D = node.material_override
 				material.albedo_color.a = RING_ALPHA * (1.0 - t)
+	for entry in _blasts:
+		if entry.active:
+			if _age(entry, delta):
+				_release(entry)
+			else:
+				var swell := 0.25 + 0.75 * (1.0 - pow(1.0 - entry.age / entry.life, 2.0))
+				var node: Node3D = entry.node
+				node.scale = Vector3.ONE * entry.size * swell
 	for entry in _sounds:
 		if entry.active:
 			entry.age += delta
@@ -504,11 +552,15 @@ func _set_visible(entry: Entry, value: bool) -> void:
 		(entry.node as Node3D).visible = value
 
 
-func _show_hidden_meshes(node: Node) -> void:
+## Shows every 3D node under `node`, telegraphs and pools included; one that does not follow its
+## parent's transform (top level, or under a plain Node) is moved to `spot` with the rest.
+func _show_hidden_meshes(node: Node, spot: Vector3) -> void:
 	for child in node.get_children():
-		if child is GeometryInstance3D:
+		if child is Node3D:
 			child.visible = true
-		_show_hidden_meshes(child)
+			if child.top_level or not (node is Node3D):
+				child.global_position = spot
+		_show_hidden_meshes(child, spot)
 
 
 func _make_tracer() -> Node:
@@ -564,6 +616,14 @@ func _make_sound() -> Node:
 	var player := AudioStreamPlayer3D.new()
 	player.unit_size = 8.0
 	return player
+
+
+func _make_blast() -> Node:
+	var node := MeshInstance3D.new()
+	node.mesh = _blast_mesh
+	node.material_override = _blast_material
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return node
 
 
 func _make_ring() -> Node:

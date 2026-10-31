@@ -1,6 +1,6 @@
 extends TestCase
-## Milestone 3 loot checks: drop rates from a seeded stream, item rolling, the inventory and
-## overflow tray rules, unlock gates, the version 3 save and its migration from version 2.
+## Loot checks (Milestones 3 and 4): drop rates from a seeded stream, item rolling, the inventory
+## and overflow tray rules, unlock gates, the version 4 save and its migration from version 2.
 
 const KILLS := 60000
 
@@ -45,8 +45,21 @@ func _test_drop_rates() -> void:
 	for i in 50:
 		var first := Loot.roll_kill_drop(warden, bases, generator, false)
 		var replay := Loot.roll_kill_drop(warden, bases, generator, true)
-		boss_ok = boss_ok and int(first.get("rarity", -1)) == Items.Rarity.RARE and int(replay.get("rarity", -1)) == Items.Rarity.RARE
-	check(boss_ok, "the Warden always drops a Rare (Milestone 3: Epics arrive with Milestone 4)")
+		boss_ok = boss_ok and int(first.get("rarity", -1)) == Items.Rarity.EPIC and int(replay.get("rarity", -1)) == Items.Rarity.RARE
+	check(boss_ok, "a boss drops an Epic on its first clear and a Rare on a replay")
+	var heavy: EnemyDefinition = load("res://data/enemies/heavy.tres")
+	var heavy_counts := [0, 0, 0, 0, 0]
+	for i in 4000:
+		var item := Loot.roll_kill_drop(heavy, bases, generator)
+		if not item.is_empty():
+			heavy_counts[int(item["rarity"])] += 1
+	var rare_rate: float = heavy_counts[2] / 4000.0
+	check(absf(rare_rate - heavy.rare_chance) < heavy.rare_chance * 0.2 and heavy_counts[3] == 0,
+		"heavies drop a Rare about %d%% of the time and never an Epic (%.1f%%)" % [roundi(heavy.rare_chance * 100.0), rare_rate * 100.0])
+	var heavy_replay := true
+	for i in 400:
+		heavy_replay = heavy_replay and int(Loot.roll_kill_drop(heavy, bases, generator, true).get("rarity", 0)) <= Items.Rarity.UNCOMMON
+	check(heavy_replay, "replayed waves cap a heavy's drop at Uncommon")
 	check(Loot.roll_kill_drop(chaser, [] as Array[AttachmentDefinition], generator).is_empty(), "nothing drops when no base is unlocked")
 
 
@@ -82,8 +95,9 @@ func _test_unlock_gates() -> void:
 	check(Progression.is_area_open("firing_range"), "clearing wave 2 opens the Firing Range")
 	for wave in [3, 4, 5]:
 		Progression.record_wave_cleared(wave, 0, 1.0)
-	check(Progression.is_base_unlocked(automatic) and Progression.droppable_bases().size() == 5, "clearing wave 5 unlocks Automatic and it joins the drop pool")
-	check(Progression.is_slot_open(&"muzzle") and not Items.slot_has_bases(&"muzzle"), "the muzzle slot opens at the Warden but has no bases yet")
+	check(Progression.is_base_unlocked(automatic) and Progression.droppable_bases().size() == 9, "clearing wave 5 unlocks Automatic and it joins the drop pool with the muzzle and ammo bases (%d)" % Progression.droppable_bases().size())
+	check(Progression.is_slot_open(&"muzzle") and Progression.is_slot_open(&"ammo") and Progression.droppable_bases(&"muzzle").size() == 2 and Progression.droppable_bases(&"ammo").size() == 2,
+		"the muzzle and ammo slots open at the Warden with two bases each")
 	check(Progression.droppable_bases(&"receiver").size() == 1 and Progression.droppable_bases(&"receiver")[0].id == &"automatic", "the drop pool can be limited to one slot")
 	Progression.reset()
 
@@ -154,9 +168,9 @@ func _test_save_round_trip() -> void:
 	data["loot_state"] = "123456789012345678"
 	data["range"] = {"best_time": 11.5, "par_rewarded": true, "chosen_slot": "receiver"}
 	data["records"]["drops"] = 7
-	check(SaveFile.save(data), "version 3 save writes")
+	check(SaveFile.save(data), "version 4 save writes")
 	var loaded := SaveFile.load_or_fresh()
-	check(loaded["version"] == 3 and loaded["inventory"].size() == 1 and loaded["overflow"].size() == 1 and loaded["equipped"].has("receiver"), "round trip keeps inventory, tray and build")
+	check(loaded["version"] == SaveFile.VERSION and loaded["inventory"].size() == 1 and loaded["overflow"].size() == 1 and loaded["equipped"].has("receiver"), "round trip keeps inventory, tray and build")
 	check(loaded["parts"]["scrap"] == 4 and loaded["parts"]["alloy"] == 2 and not loaded["parts"].has("bogus"), "round trip keeps known parts and drops unknown ones")
 	check(loaded["loot_state"] == "123456789012345678", "the loot stream state survives as a string")
 	check(is_equal_approx(loaded["range"]["best_time"], 11.5) and loaded["range"]["par_rewarded"] == true and loaded["range"]["chosen_slot"] == "receiver", "round trip keeps the range record")
@@ -170,7 +184,7 @@ func _test_save_round_trip() -> void:
 	v2.erase("range")
 	v2["records"] = {"kills": 3, "credits_earned": 60, "deaths": 1, "waves_cleared": 2}
 	var migrated := SaveFile.migrate(v2)
-	check(migrated["version"] == 3 and migrated["credits"] == 50 and migrated["parts"]["scrap"] == 0 and migrated["overflow"].is_empty() and migrated["records"]["drops"] == 0, "a Milestone 2 save migrates to version 3 with empty new fields")
+	check(migrated["version"] == SaveFile.VERSION and migrated["credits"] == 50 and migrated["parts"]["scrap"] == 0 and migrated["overflow"].is_empty() and migrated["records"]["drops"] == 0, "a Milestone 2 save migrates to the current version with empty new fields")
 	SaveFile.delete()
 	Progression.reset()
 

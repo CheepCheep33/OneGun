@@ -2,7 +2,8 @@ class_name Items
 extends RefCounted
 ## The item data model. An item instance is a small Dictionary so it saves as plain JSON:
 ##   { "base": "long_barrel", "rarity": 2, "affixes": [{"id": "sharp", "roll": 0.73}], "mark": 1,
-##     "locked": false, "uid": 17 }
+##     "locked": false, "uid": 17, "rerolls": 0 }
+## `rerolls` counts the crafting table's affix rerolls on this item, which raise its next price.
 ## Base and affix ids resolve to resources in data/attachments/ and data/affixes/. The base
 ## decides what the attachment does; affixes decide how well (plan: Loot rarity).
 
@@ -31,13 +32,15 @@ const BASE_IDS: Array[StringName] = [
 	&"semi_auto", &"automatic", &"burst",
 	&"standard_barrel", &"long_barrel", &"penetrator_barrel",
 	&"standard_magazine", &"extended_magazine", &"fast_magazine",
+	&"open_muzzle", &"splitter", &"overpressure",
+	&"standard_rounds", &"explosive_rounds", &"ricochet_rounds",
 ]
 const AFFIX_IDS: Array[StringName] = [
 	&"sharp", &"rapid", &"deep", &"quick", &"keen", &"brutal", &"piercing", &"thrifty", &"arcing",
 	&"lingering", &"precise",
 ]
-## Crafting parts, one per rarity, returned by dismantling (plan: Crafting). Crafting itself
-## arrives with Milestone 4; the parts accumulate from Milestone 3 so nothing dismantled is wasted.
+## Crafting parts, one per rarity, returned by dismantling and spent at the crafting table
+## (plan: Crafting; see Crafting for the recipes).
 const PART_IDS: Array[String] = ["scrap", "alloy", "circuits", "cores", "legendary_cores"]
 const PART_NAMES := {
 	"scrap": "Scrap", "alloy": "Alloy", "circuits": "Circuits", "cores": "Cores", "legendary_cores": "Legendary cores",
@@ -62,6 +65,7 @@ static func make(base_id: StringName, rarity := Rarity.COMMON, affixes: Array = 
 		"mark": clampi(mark, MIN_MARK, MAX_MARK),
 		"locked": false,
 		"uid": _next_uid,
+		"rerolls": 0,
 	}
 	_next_uid += 1
 	for affix in affixes:
@@ -109,6 +113,7 @@ static func normalize(item: Dictionary) -> Dictionary:
 		"mark": clampi(int(item.get("mark", MIN_MARK)), MIN_MARK, MAX_MARK),
 		"locked": bool(item.get("locked", false)),
 		"uid": uid,
+		"rerolls": maxi(int(item.get("rerolls", 0)), 0),
 	}
 
 

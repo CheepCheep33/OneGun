@@ -26,6 +26,18 @@ extends Resource
 ## Bosses get a HUD health bar, drop guaranteed loot straight into the inventory and double the wave bonus.
 @export var is_boss := false
 
+@export_group("Armour")
+## Flat damage taken off every hit (scaled with the enemy's health); a weak-point hit ignores it,
+## and at least a quarter of any hit lands.
+@export var armor := 0.0
+## A sphere in the enemy's own space (forward is -z) where hits count as weak-point hits.
+@export var weak_point_offset := Vector3.ZERO
+## Zero means no weak point.
+@export var weak_point_radius := 0.0
+## Chance per kill of a Rare, rolled before the Common and Uncommon chances: the armoured enemies'
+## loot role (plan: Rare drops from heavies and shield bearers). Replays cap it at Uncommon.
+@export var rare_chance := 0.0
+
 @export_group("Movement")
 ## Flying enemies ignore gravity and hover; their hitbox sits at hover_height.
 @export var flying := false
@@ -47,3 +59,10 @@ extends Resource
 @export var spread_far_degrees := 0.0
 @export var projectile_speed := 16.0
 @export var projectile_lifetime := 4.0
+
+@export_group("Summons")
+## A boss that calls in adds (the Foreman's drones): the scene and definition it spawns, and the
+## most of them alive at once. The wave runner keeps that many in its reserve.
+@export var summon_scene: PackedScene
+@export var summon_definition: EnemyDefinition
+@export var max_summons := 0

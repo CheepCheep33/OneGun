@@ -25,10 +25,12 @@ const BASE_MUZZLE_Z := -0.16
 ## How far the muzzle light reaches while the shader warm-up draws the arena: far enough to touch
 ## everything in view from the player's start (the arena is 46 m across).
 const WARM_UP_LIGHT_RANGE := 60.0
+## Colour of a simulated player round when its ammo names none.
+const PLAYER_ROUND_COLOR := Color(1.0, 0.9, 0.55)
 
 @export var base_stats: WeaponBaseStats
-## Physics layers a shot can hit: world (1) and enemies (3).
-@export_flags_3d_physics var hit_mask := 1 | 4
+## Physics layers a shot can hit: world (1), enemies (3) and shields (4).
+@export_flags_3d_physics var hit_mask := 1 | 4 | 8
 
 var stats: WeaponStats
 ## The equipped items the current stats were built from, for the model.
@@ -220,7 +222,7 @@ func _fire_round() -> void:
 			var direction := _ray_direction(ray, ray_count)
 			if profile_id != "hitscan" and ProjectilePool.current != null and ProjectilePool.PROFILES.has(profile_id):
 				ProjectilePool.current.fire_player_round(_shooter_rid, _camera.global_position, direction, stats, shot,
-					ProjectilePool.PROFILES[profile_id])
+					ProjectilePool.PROFILES[profile_id], stats.behaviours.get("projectile_color", PLAYER_ROUND_COLOR))
 				Fx.tracer(self, _muzzle.global_position, _camera.global_position + direction * 1.5)
 			else:
 				_cast_ray(direction, shot)
@@ -257,7 +259,7 @@ func _cast_ray(direction: Vector3, shot: ShotPipeline.ShotState) -> void:
 	for hit in result.hits:
 		hit_landed.emit(hit.killed)
 		if Settings.show_damage_numbers and hit.damage > 0.0:
-			Fx.damage_number(self, hit.position, hit.damage, hit.killed)
+			Fx.damage_number(self, hit.position, hit.damage, hit.killed, hit.weak_point)
 	if result.hit_world:
 		Fx.impact(self, result.end_point, result.world_normal)
 	Fx.tracer(self, _muzzle.global_position, result.end_point)
@@ -320,6 +322,7 @@ func _apply_visuals() -> void:
 	var grip_height := 1.0
 	var slide_color: Variant = null
 	var extension := false
+	var muzzle_scale := 1.0
 	for slot_id in Items.SLOT_IDS:
 		var item: Variant = equipped.get(String(slot_id))
 		if not (item is Dictionary):
@@ -332,6 +335,7 @@ func _apply_visuals() -> void:
 		if definition.visual.has("slide_color"):
 			slide_color = definition.visual["slide_color"]
 		extension = extension or bool(definition.visual.get("barrel_extension", false))
+		muzzle_scale = maxf(muzzle_scale, float(definition.visual.get("muzzle_scale", 1.0)))
 	_slide.scale = Vector3(_slide_rest_scale.x, _slide_rest_scale.y, _slide_rest_scale.z * slide_length)
 	# Grow the slide forward: its mesh is centred, so shift it by half the added length.
 	_slide.position.z = -0.13 * (slide_length - 1.0)
@@ -339,6 +343,7 @@ func _apply_visuals() -> void:
 	_grip.position.y = -0.085 - 0.06 * (grip_height - 1.0)
 	_muzzle.position.z = BASE_MUZZLE_Z - 0.26 * (slide_length - 1.0) - (0.06 if extension else 0.0)
 	_barrel_extension.visible = extension
+	_barrel_extension.scale = Vector3(muzzle_scale, 1.0, muzzle_scale) # the cylinder runs along its local Y
 	_barrel_extension.position.z = BASE_MUZZLE_Z - 0.26 * (slide_length - 1.0) - 0.03
 	if slide_color is Color:
 		var material := StandardMaterial3D.new()

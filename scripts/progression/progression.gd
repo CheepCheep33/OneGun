@@ -19,8 +19,13 @@ const TIER_STEP := 1.6
 const WAVES_PER_TIER := 5
 const INVENTORY_SIZE := 40
 const OVERFLOW_SIZE := 20
-## Side areas and the wave whose first clear opens them.
-const AREA_GATES := {"firing_range": 2}
+## Side areas and the wave whose first clear opens them (the Scrapyard opens when the Warden falls).
+const AREA_GATES := {"firing_range": 2, "scrapyard": 5}
+## Scrapyard extraction: parts per scrap core carried out, and a Rare every time (plan: Scrapyard).
+const SCRAP_PER_CORE := 2
+const CORES_PER_ALLOY := 3
+const CORES_PER_CIRCUIT := 8
+const SCRAPYARD_LOG_FLAG := "scrapyard_log_1"
 
 var data: Dictionary = SaveFile.fresh()
 ## True when a save existed when the game started, so the bench can greet a returning player.
@@ -383,6 +388,76 @@ func move_to_inventory(uid: int) -> bool:
 	return true
 
 
+# ------------------------------------------------------------------ crafting table
+
+## Why a craft cannot happen right now, or "" when it can: the base must be a non-default one whose
+## slot and gate are open, the rarity craftable, the parts there and the inventory or tray not full.
+func craft_block_reason(base_id: StringName, rarity: int) -> String:
+	var base := Items.get_attachment(base_id)
+	if base == null or base.is_default:
+		return "Pick a base"
+	if not is_slot_open(base.slot):
+		var slot := Items.get_slot(base.slot)
+		return slot.gate_text if slot else "Slot locked"
+	if not is_base_unlocked(base):
+		return base.gate_text
+	if not Crafting.is_craftable_rarity(rarity):
+		return "Legendaries come from a Legendary core"
+	if data["inventory"].size() >= INVENTORY_SIZE and data["overflow"].size() >= OVERFLOW_SIZE:
+		return "Inventory and tray are full"
+	if not Crafting.can_afford(data["parts"], Crafting.craft_cost(rarity)):
+		return "Needs " + Crafting.describe_cost(Crafting.craft_cost(rarity))
+	return ""
+
+
+## Makes the chosen base at the chosen rarity with rolled affixes from the loot stream and pays its
+## parts (plan: Craft). Returns the item, or an empty dictionary (and changes nothing) when blocked.
+func craft(base_id: StringName, rarity: int) -> Dictionary:
+	if craft_block_reason(base_id, rarity) != "":
+		return {}
+	var cost := Crafting.craft_cost(rarity)
+	Crafting.pay(data["parts"], cost)
+	var item := Loot.make_item(Items.get_attachment(base_id), rarity, loot_rng)
+	_store_loot_state()
+	data["records"]["crafted"] = int(data["records"]["crafted"]) + 1
+	PlaytestLog.event("craft", {"base": String(base_id), "rarity": rarity, "cost": Crafting.describe_cost(cost)})
+	add_item(item, "craft")
+	return item
+
+
+## Why affix `index` of the item cannot be rerolled now, or "".
+func reroll_block_reason(uid: int, index: int) -> String:
+	var found := locate(uid)
+	if found.is_empty():
+		return "Select an item"
+	var item: Dictionary = found["item"]
+	if index < 0 or index >= item.get("affixes", []).size():
+		return "No such affix"
+	var cost := Crafting.reroll_cost(item)
+	if not Crafting.can_afford(data["parts"], cost):
+		return "Needs " + Crafting.describe_cost(cost)
+	return ""
+
+
+## Rerolls one affix of an item wherever it is (inventory, tray or fitted), keeping the others, and
+## pays the item's rising reroll price (plan: Reroll). False when blocked.
+func reroll_affix(uid: int, index: int) -> bool:
+	if reroll_block_reason(uid, index) != "":
+		return false
+	var item: Dictionary = locate(uid)["item"]
+	var cost := Crafting.reroll_cost(item)
+	var before := String(item["affixes"][index]["id"])
+	if not Crafting.reroll(item, index, loot_rng):
+		return false
+	_store_loot_state()
+	Crafting.pay(data["parts"], cost)
+	data["records"]["rerolled"] = int(data["records"]["rerolled"]) + 1
+	PlaytestLog.event("reroll", {"base": item.get("base", ""), "from": before, "to": item["affixes"][index]["id"],
+		"cost": Crafting.describe_cost(cost)})
+	inventory_changed.emit()
+	return true
+
+
 func _add_parts(amounts: Dictionary) -> void:
 	for part in amounts:
 		if data["parts"].has(part):
@@ -452,6 +527,48 @@ func record_range_time(seconds: float, par: float) -> Dictionary:
 	PlaytestLog.event("range_time", {"seconds": "%.2f" % seconds, "par": par, "best": result["best"]})
 	progress_changed.emit()
 	return result
+
+
+# ------------------------------------------------------------------ scrapyard
+
+func scrapyard_state() -> Dictionary:
+	return data["areas"]["scrapyard"]
+
+
+## What extracting with `cores` scrap cores pays in parts (plan: crafting parts in bulk).
+static func scrapyard_parts(cores: int) -> Dictionary:
+	var parts := {}
+	if cores <= 0:
+		return parts
+	parts["scrap"] = cores * SCRAP_PER_CORE
+	if cores / CORES_PER_ALLOY > 0:
+		parts["alloy"] = cores / CORES_PER_ALLOY
+	if cores / CORES_PER_CIRCUIT > 0:
+		parts["circuits"] = cores / CORES_PER_CIRCUIT
+	return parts
+
+
+## Counts a run that started (for the playtest log and the bench).
+func record_scrapyard_run() -> void:
+	data["areas"]["scrapyard"]["runs"] = int(data["areas"]["scrapyard"]["runs"]) + 1
+
+
+## A successful extraction: the carried cores become parts, a Rare is granted (every extraction),
+## and the first one sets the story flag. Returns {"parts", "reward", "first"}.
+func record_scrapyard_extraction(cores: int, seconds: float) -> Dictionary:
+	var state: Dictionary = data["areas"]["scrapyard"]
+	var first := int(state["extractions"]) == 0
+	state["extractions"] = int(state["extractions"]) + 1
+	state["best_cores"] = maxi(int(state["best_cores"]), cores)
+	var parts := scrapyard_parts(cores)
+	_add_parts(parts)
+	var reward := grant_item(Items.Rarity.RARE, &"", "scrapyard_extraction")
+	if first and not data["story_flags"].has(SCRAPYARD_LOG_FLAG):
+		data["story_flags"].append(SCRAPYARD_LOG_FLAG)
+	PlaytestLog.event("scrapyard_extracted", {"cores": cores, "seconds": "%.1f" % seconds, "first": first})
+	inventory_changed.emit()
+	progress_changed.emit()
+	return {"parts": parts, "reward": reward, "first": first}
 
 
 # ------------------------------------------------------------------ save

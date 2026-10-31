@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="AttachmentDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/attachment_definition.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/weapons/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_1"]
+script = ExtResource("2_mod")
+stat = &"range"
+flat = 0.0
+percent = -0.3
+
+[sub_resource type="Resource" id="Mod_2"]
+script = ExtResource("2_mod")
+stat = &"recoil"
+flat = 0.0
+percent = 0.2
+
+[resource]
+script = ExtResource("1_def")
+id = &"splitter"
+display_name = "Splitter"
+slot = &"muzzle"
+description = "Fires three rays in a cone. Together they hit a quarter harder than one shot, a third of that each, and the cone spreads them at range."
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1"), SubResource("Mod_2")])
+mark_scale = 0.15
+behaviours = {"ray_count": 3, "spread_degrees": 4.0}
+is_default = false
+unlock_wave = 0
+gate_text = ""
+visual = {"barrel_extension": true, "muzzle_scale": 1.8}

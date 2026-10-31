@@ -1,7 +1,8 @@
 extends TestCase
-## Milestone 3 stats checks: every authored base, mark scaling, the range and recoil stats, pierce
-## and bounce falloff, tier scaling, and a random sample of full builds that must all stay finite
-## and inside the caps (plan: stats sample test).
+## Stats checks: every authored base, mark scaling, the range and recoil stats, pierce and bounce
+## falloff, the Splitter's damage split and Explosive rounds' direct and blast shares (Milestone 4),
+## tier scaling, and a random sample of full builds that must all stay finite and inside the caps
+## (plan: stats sample test).
 
 const SAMPLE_BUILDS := 2000
 
@@ -12,6 +13,7 @@ func run_unit() -> void:
 	_test_range_and_falloff()
 	_test_bases_change_the_build()
 	_test_pierce_and_bounce_split()
+	_test_splitter_and_explosive()
 	_test_tier_scaling()
 	_test_every_base_every_mark()
 	_test_sampled_builds()
@@ -20,17 +22,19 @@ func run_unit() -> void:
 
 func _test_catalogue() -> void:
 	var bases := Items.all_attachments()
-	check(bases.size() == Items.BASE_IDS.size() and bases.size() == 9, "nine authored bases load (%d)" % bases.size())
-	for slot in [&"receiver", &"barrel", &"magazine"]:
+	check(bases.size() == Items.BASE_IDS.size() and bases.size() == 15, "fifteen authored bases load (%d)" % bases.size())
+	for slot in [&"receiver", &"barrel", &"muzzle", &"magazine", &"ammo"]:
 		var default := Items.default_for_slot(slot)
 		check(default != null and default.is_default and default.modifiers.is_empty(), "%s has a default base with no modifiers" % slot)
 		check(Items.bases_for_slot(slot).size() == 3 and Items.slot_has_bases(slot), "%s has two non-default bases" % slot)
-	check(not Items.slot_has_bases(&"muzzle") and not Items.slot_has_bases(&"optic"), "slots without shipped bases report none")
-	check(Items.drop_affixes().size() == 9 and Items.all_affixes().size() == 11, "nine of eleven affixes are in the drop pool (%d / %d)" % [Items.drop_affixes().size(), Items.all_affixes().size()])
+	check(not Items.slot_has_bases(&"optic") and not Items.slot_has_bases(&"underbarrel"), "slots without shipped bases report none")
+	check(Items.drop_affixes().size() == 10 and Items.all_affixes().size() == 11, "ten of eleven affixes are in the drop pool (%d / %d)" % [Items.drop_affixes().size(), Items.all_affixes().size()])
 	var dropping := []
 	for affix in Items.drop_affixes():
 		dropping.append(String(affix.id))
-	check(not dropping.has("lingering") and not dropping.has("precise"), "status and weak-point affixes wait for their systems")
+	check(not dropping.has("lingering") and dropping.has("precise"), "the status affix waits for statuses; weak-point damage drops now that heavies have a core")
+	check(Items.get_attachment(&"explosive_rounds").behaviours.get("projectile") == "shell" and Items.get_attachment(&"ricochet_rounds").behaviours.get("projectile") == "ricochet",
+		"Explosive and Ricochet rounds fire on the shared projectile system")
 	check(Items.get_attachment(&"automatic").unlock_wave == 5 and Items.get_attachment(&"burst").unlock_wave == 10, "receiver bases carry their gate waves")
 
 
@@ -102,6 +106,35 @@ func _test_pierce_and_bounce_split() -> void:
 	check(is_equal_approx(WeaponStats.resolve_shot(stats, context, generator).damage, 16.0), "a bounce keeps 80 percent")
 
 
+## Plan: Splitter divides one shot across its rays for 125% in total; Explosive deals 60% on the hit
+## and 60% in the blast, which never crits.
+func _test_splitter_and_explosive() -> void:
+	var base: WeaponBaseStats = Progression.PISTOL_BASE
+	var plain := WeaponStats.build(base)
+	var splitter := WeaponStats.build(base, {}, {"muzzle": Items.make(&"splitter")})
+	check(int(splitter.behaviours["ray_count"]) == 3 and is_equal_approx(WeaponStats.ray_share(splitter), 1.25 / 3.0), "the Splitter fires three rays of 125/3 percent each")
+	var context := WeaponStats.ShotContext.new()
+	var one_ray := WeaponStats.resolve_shot(splitter, context, TestCase.rng(1))
+	check(is_equal_approx(one_ray.damage, splitter.damage * 1.25 / 3.0), "one Splitter ray deals its share (%.2f)" % one_ray.damage)
+	check(is_equal_approx(WeaponStats.expected_damage_at(splitter, 5.0), WeaponStats.expected_damage_at(plain, 5.0) * 1.25),
+		"up close the bench's per-pull damage shows all three rays together: 125 percent of one shot (%.2f)" % WeaponStats.expected_damage_at(splitter, 5.0))
+	var share := WeaponStats.ray_hit_share(splitter, 10.0)
+	check(share < 0.5 and is_equal_approx(WeaponStats.expected_damage_at(splitter, 10.0), WeaponStats.expected_damage_at(plain, 10.0) * 1.25 * share),
+		"at 10 m the spread costs the Splitter rays, so the readout drops below a plain shot (%.0f%% of rays land)" % (share * 100.0))
+	var explosive := WeaponStats.build(base, {}, {"ammo": Items.make(&"explosive_rounds")})
+	var direct := WeaponStats.resolve_shot(explosive, context, TestCase.rng(1))
+	check(is_equal_approx(explosive.blast_radius(), 2.5) and is_equal_approx(direct.damage, explosive.damage * 0.6), "an explosive round's direct hit deals 60 percent (%.2f)" % direct.damage)
+	check(is_equal_approx(WeaponStats.blast_damage(explosive, 10.0), explosive.damage * 0.6), "its blast deals 60 percent to everything in the radius")
+	check(is_equal_approx(WeaponStats.expected_damage_at(explosive, 10.0), explosive.damage * 1.2), "the direct target takes the hit and the blast: 120 percent")
+	var keen := WeaponStats.build(base, {}, {"ammo": Items.make(&"explosive_rounds", Items.Rarity.EPIC, [{"id": "keen", "roll": 1.0}, {"id": "brutal", "roll": 1.0}])})
+	check(keen.crit_chance > 0.0 and is_equal_approx(WeaponStats.blast_damage(keen, 10.0), keen.damage * 0.6), "a blast never crits, whatever the build's crit")
+	check(is_zero_approx(WeaponStats.blast_damage(plain, 10.0)), "rounds without blast radius make no blast")
+	var both := WeaponStats.build(base, {}, {"muzzle": Items.make(&"splitter"), "ammo": Items.make(&"explosive_rounds")})
+	check(is_equal_approx(WeaponStats.blast_damage(both, 5.0), both.damage * 0.6 * 1.25 / 3.0), "a Splitter's explosive rays each blast for their share")
+	var weak := WeaponStats.build(base, {}, {"barrel": Items.make(&"long_barrel", Items.Rarity.UNCOMMON, [{"id": "precise", "roll": 1.0}])})
+	check(is_equal_approx(weak.weak_point_bonus(), 1.2), "the Precise affix raises weak-point damage (x%.2f)" % weak.weak_point_bonus())
+
+
 func _test_tier_scaling() -> void:
 	var base: WeaponBaseStats = Progression.PISTOL_BASE
 	var tier_zero := WeaponStats.build(base, {"damage": 3, "fire_rate": 2})
@@ -124,7 +157,7 @@ func _test_every_base_every_mark() -> void:
 			var stats := WeaponStats.build(base, {"damage": 20, "fire_rate": 20, "magazine": 20, "reload": 20}, {String(definition.slot): item})
 			ok = ok and _within_limits(stats, base)
 			count += 1
-	check(ok and count == 45, "every base at every mark with maximum affix rolls stays finite and inside the caps (%d builds)" % count)
+	check(ok and count == Items.BASE_IDS.size() * 5, "every base at every mark with maximum affix rolls stays finite and inside the caps (%d builds)" % count)
 
 
 func _test_sampled_builds() -> void:
@@ -138,7 +171,7 @@ func _test_sampled_builds() -> void:
 		for tuning in CoreTuning.all():
 			levels[String(tuning.id)] = generator.randi_range(0, 60)
 		var equipped := {}
-		for slot in [&"receiver", &"barrel", &"magazine"]:
+		for slot in [&"receiver", &"barrel", &"muzzle", &"magazine", &"ammo"]:
 			if generator.randf() < 0.8:
 				var choices := Items.bases_for_slot(slot)
 				var definition: AttachmentDefinition = choices[generator.randi_range(0, choices.size() - 1)]

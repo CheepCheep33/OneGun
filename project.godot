@@ -70,6 +70,7 @@ common/max_physics_steps_per_frame=4
 3d_physics/layer_1="world"
 3d_physics/layer_2="player"
 3d_physics/layer_3="enemies"
+3d_physics/layer_4="shields"
 
 [rendering]
 

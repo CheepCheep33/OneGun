@@ -51,12 +51,18 @@ The game opens on **the bench**. Buy core tuning levels (damage, fire rate, maga
 with credits, fit attachments in the **gunsmith**, pick a wave, and press Start. Kills pay credits
 immediately and sometimes drop an attachment (a beam on the floor); clearing a wave pays a bonus,
 one Uncommon attachment, and unlocks the next. Dying keeps the credits and the loot you picked up;
-loot still on the floor is lost. The Warden waits at wave 5 and opens two more slots.
+loot still on the floor is lost. The Warden waits at wave 5 and opens the muzzle and ammo slots;
+the Foreman waits at wave 10. Fifteen waves are authored so far.
 
 Click an inventory item at the bench to see what it would change before equipping it. The inventory
 holds 40 items; extras land in an overflow tray until you move or dismantle them. Dismantling pays
-parts for the crafting table that comes in Milestone 4. The **Firing Range** (opens after wave 2)
-has dummies with live damage readouts and a timed gallery that pays one Uncommon.
+parts for the **crafting table** (the bench's second tab): craft any unlocked base at a chosen
+rarity up to Epic, or reroll one affix of the selected item while keeping the others (each reroll
+of the same item costs more). The **Firing Range** (opens after wave 2) has dummies with live
+damage readouts and a timed gallery that pays one Uncommon. The **Scrapyard** (opens after wave 5)
+is a 90-second salvage run: grab scrap cores off the wrecks while robots pour in, then stand on the
+south door's pad once it opens to extract with them for parts and a Rare. Dying there loses the
+cores.
 
 Progress saves at the bench to `user://save.json`; the bench's **Reset progress** button (press
 twice) wipes it. A playtest log is written to `user://playtest_log.txt`. On Linux `user://` is
@@ -67,7 +73,9 @@ twice) wipes it. A playtest log is written to `user://playtest_log.txt`. On Linu
 **Smoke test.** Checks the item model, the stats functions, the loot tables and inventory rules, the
 save file and the wave data, then drives the real game scene: the bench and gunsmith, movement,
 shooting, fire modes, pierce and projectiles, the shooter, drones and the Warden, drops, the Firing
-Range, death and retry, replay and abandon. Case scripts live in `tests/cases/`.
+Range, crafting, the heavy, shield bearer and Foreman, Explosive and Ricochet rounds, the
+dangerous combinations, the Scrapyard, death and retry, replay and abandon. Case scripts live in
+`tests/cases/`.
 
 ```
 godot --headless --path . res://tests/smoke_test.tscn
@@ -75,7 +83,8 @@ godot --headless --path . res://tests/smoke_test.tscn
 
 It prints PASS/FAIL per check and exits with code 1 if anything failed. It checks logic only; it does
 not replace playing the game. It resets the save in `user://`, so back yours up first. Add
-`-- case=perf` (or another case file's name) after the scene path to run one case on its own.
+`-- case=perf` (or another case file's name) after the scene path to run one case on its own;
+`-- case=crafting+roster` runs several in the driver's order.
 
 **Performance gate.** One of the cases (`tests/cases/perf_cases.gd`) holds the standing rule that no
 milestone may cost frame rate: a second busy combat round must add no nodes, orphan nodes or

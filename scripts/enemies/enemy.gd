@@ -3,14 +3,18 @@ extends CharacterBody3D
 ## The one base enemy (plan: Enemies). Owns health, the spawn-in, hit flash and stagger, death and
 ## loot hooks, gravity, navigation helpers and the target. Types (Chaser, Shooter, SwarmDrone,
 ## Warden) are scenes with their own `_behave` step, `_reset_behaviour` and telegraph colours.
-## Nodes are recycled by the wave runner, so every bit of state lives in reset(). Status effects,
-## weak points and enemy affixes land here in later milestones.
+## Nodes are recycled by the wave runner, so every bit of state lives in reset(). Armour and weak
+## points come from the definition: armour takes a flat amount off every hit (at least a quarter
+## of the hit still lands), a weak-point hit ignores it. Status effects and enemy affixes land here
+## in later milestones.
 
 signal died(enemy: Enemy)
 ## Emitted on every death, by the player or the fall limit, once the node can leave the arena.
 ## The wave runner recycles it into its reserve (no node is built or freed mid-wave).
 signal retired(enemy: Enemy)
 signal health_changed(current: float, maximum: float)
+## A boss asks the wave runner for adds (the Foreman's drones); see EnemyDefinition.summon_scene.
+signal summon_requested(enemy: Enemy, count: int)
 
 const SPAWN_TIME := 0.6
 const REPATH_INTERVAL := 0.2
@@ -20,6 +24,8 @@ const STAGGER_SPEED_SCALE := 0.35
 const FALL_LIMIT := -20.0
 ## Shots check line of sight against world geometry only.
 const WORLD_MASK := 1
+## Armour never takes more than this share of a hit.
+const ARMOR_MAX_SHARE := 0.75
 
 @export var definition: EnemyDefinition
 @export var death_sound: AudioStream
@@ -33,6 +39,10 @@ var max_health: float:
 		return definition.max_health * health_scale
 var is_alive := true
 var is_spawning := true
+## Set by the wave runner on a boss's adds: they pay credits but do not count toward the wave.
+var summoned := false
+## What the last take_hit actually removed, after armour, for damage numbers.
+var last_damage_taken := 0.0
 
 var _spawn_time := 0.0
 var _hit_flash_left := 0.0
@@ -120,10 +130,15 @@ func _process(delta: float) -> void:
 	_visual_tick(delta)
 
 
-## Called by hitscan rays and projectiles. Returns true when this hit killed the enemy.
-func take_hit(damage: float, _point: Vector3, direction: Vector3) -> bool:
+## Called by hitscan rays, projectiles, chains and blasts. Returns true when this hit killed the
+## enemy. Armour takes its share unless the hit landed on a weak point.
+func take_hit(damage: float, _point: Vector3, direction: Vector3, weak_point := false) -> bool:
+	last_damage_taken = 0.0
 	if not is_alive:
 		return false
+	if not weak_point and definition.armor > 0.0:
+		damage = maxf(damage - definition.armor * health_scale, damage * (1.0 - ARMOR_MAX_SHARE))
+	last_damage_taken = damage
 	health -= damage
 	_hit_flash_left = HIT_FLASH_TIME
 	_stagger_left = STAGGER_TIME
@@ -132,6 +147,22 @@ func take_hit(damage: float, _point: Vector3, direction: Vector3) -> bool:
 		_die(direction, true)
 		return true
 	return false
+
+
+## True when a hit at `point` (world space) lands on the definition's weak point, a sphere in the
+## enemy's own space (the heavy's core on its back).
+func is_weak_point(point: Vector3) -> bool:
+	if definition == null or definition.weak_point_radius <= 0.0:
+		return false
+	return to_local(point).distance_to(definition.weak_point_offset) <= definition.weak_point_radius
+
+
+## Takes the enemy out without a kill: no credits, no drop, a burst where it was (a boss's adds
+## when the boss falls or the wave clears).
+func dismiss() -> void:
+	if not is_alive:
+		return
+	_die(Vector3.ZERO, false)
 
 
 ## Cuts every sound this enemy is playing; the death sound is the pool's, so it carries on. A node
@@ -178,6 +209,11 @@ func _visual_glow() -> Color:
 
 
 func _visual_tick(_delta: float) -> void:
+	pass
+
+
+## Runs once as the enemy dies, before it leaves the arena: hide telegraphs, drop shields.
+func _on_death() -> void:
 	pass
 
 
@@ -254,6 +290,7 @@ func _die(direction: Vector3, killed_by_player: bool) -> void:
 	is_alive = false
 	collision_layer = 0
 	collision_mask = 0
+	_on_death()
 	var at := center()
 	Fx.burst(self, at + direction * 0.2, definition.color)
 	if death_sound:

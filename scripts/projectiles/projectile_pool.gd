@@ -10,13 +10,15 @@ const MAX_LIVE := 200
 ## Projectile profiles by id. Player ammo names one in its `projectile` behaviour (Milestone 4+).
 const PROFILES := {
 	"bolt": {"speed": 16.0, "gravity": 0.0, "radius": 0.18, "lifetime": 4.0, "bounces": 0},
-	"shell": {"speed": 28.0, "gravity": 1.0, "radius": 0.12, "lifetime": 4.0, "bounces": 0},
+	"shell": {"speed": 36.0, "gravity": 0.35, "radius": 0.12, "lifetime": 3.0, "bounces": 0},
 	"ricochet": {"speed": 60.0, "gravity": 0.0, "radius": 0.06, "lifetime": 3.0, "bounces": 2},
 	"charge": {"speed": 90.0, "gravity": 0.0, "radius": 0.1, "lifetime": 3.0, "bounces": 0},
 }
 const WORLD_LAYER := 1
 const PLAYER_LAYER := 2
 const ENEMY_LAYER := 4
+## Shield bearers' shields: player rounds stop on them, enemy bolts and bodies pass.
+const SHIELD_LAYER := 8
 ## Hits and bounces one round may resolve in a single tick before it is stopped.
 const MAX_EVENTS_PER_TICK := 8
 ## Rounds built ahead of the first wave. The pool still grows past this when a fight needs more,
@@ -102,7 +104,7 @@ func fire_player_round(shooter_rid: RID, origin: Vector3, direction: Vector3, st
 		shot: ShotPipeline.ShotState, profile: Dictionary, color := Color(1.0, 0.9, 0.55)) -> Projectile:
 	var projectile := _acquire()
 	projectile.team = Team.PLAYER
-	projectile.mask = WORLD_LAYER | ENEMY_LAYER
+	projectile.mask = WORLD_LAYER | ENEMY_LAYER | SHIELD_LAYER
 	var excluded: Array[RID] = [shooter_rid]
 	projectile.exclude = excluded
 	projectile.damage = 0.0
@@ -201,11 +203,14 @@ func _step(p: Projectile, delta: float) -> void:
 				p.exclude.append(hit.rid)
 				from = hit.position
 				continue
+			_burst(p, hit.position)
 			_retire(p)
 			return
 		# World geometry (or something a bolt cannot damage): bounce if any remain, else stop.
-		if p.bounces_left <= 0:
+		# Shields stop everything, bounces included (plan: pierce, bounce, stop).
+		if p.bounces_left <= 0 or ShotPipeline.is_shield(collider):
 			Fx.impact(self, hit.position, hit.normal)
+			_burst(p, hit.position + hit.normal * 0.05)
 			_retire(p)
 			return
 		_bounce(p, hit)
@@ -233,7 +238,16 @@ func _report_player_hit(p: Projectile, result: ShotPipeline.HitResult) -> void:
 	if p.shot != null and p.shot.scene != null and p.shot.scene.has_signal("hit_landed"):
 		p.shot.scene.hit_landed.emit(result.killed)
 	if Settings.show_damage_numbers and result.damage > 0.0:
-		Fx.damage_number(self, result.position, result.damage, result.killed)
+		Fx.damage_number(self, result.position, result.damage, result.killed, result.weak_point)
+
+
+## An explosive player round bursts where it stops (an enemy it could not pierce, the world, a
+## shield). Nothing for other rounds.
+func _burst(p: Projectile, at: Vector3) -> void:
+	if p.team != Team.PLAYER or p.stats == null or p.stats.blast_radius() <= 0.0:
+		return
+	for result in ShotPipeline.blast(at, p.travelled, p.stats, p.shot):
+		_report_player_hit(p, result)
 
 
 func _acquire() -> Projectile:

@@ -20,6 +20,12 @@ const SHOOTER := "res://data/enemies/shooter.tres"
 const SHOOTER_SCENE := "res://scenes/enemies/shooter.tscn"
 const WARDEN := "res://data/enemies/warden.tres"
 const WARDEN_SCENE := "res://scenes/enemies/warden.tscn"
+const HEAVY := "res://data/enemies/heavy.tres"
+const HEAVY_SCENE := "res://scenes/enemies/heavy.tscn"
+const BEARER := "res://data/enemies/shield_bearer.tres"
+const BEARER_SCENE := "res://scenes/enemies/shield_bearer.tscn"
+const FOREMAN := "res://data/enemies/foreman.tres"
+const FOREMAN_SCENE := "res://scenes/enemies/foreman.tscn"
 
 
 func _ready() -> void:
@@ -124,6 +130,7 @@ class Probe:
 		await _event("the Warden spawns again", 20, func() -> void: _spawn(WARDEN, WARDEN_SCENE, 10.0, 0.0), true)
 		await _seconds(0.5)
 		game.wave_runner.clear_enemies()
+		await _milestone_4_events(pistol)
 		await _event("a reload", 12, func() -> void:
 			pistol.ammo = 1
 			pistol.request_reload())
@@ -146,8 +153,93 @@ class Probe:
 		pistol.release_fire()
 		pistol.apply_build(Progression.build_stats(), Progression.equipped())
 		game.wave_runner.clear_enemies()
+		await _scrapyard_events()
 		print("")
 		get_tree().quit(0)
+
+	## Milestone 4: Explosive shells and their blast, the Splitter, the heavy's weak point, the
+	## shield bearer's shield, and the Foreman's summons and molten pool.
+	func _milestone_4_events(pistol: Pistol) -> void:
+		var explosive := {"ammo": Items.make(&"explosive_rounds")}
+		pistol.apply_build(WeaponStats.build(Progression.PISTOL_BASE, Progression.core_levels(), explosive), explosive)
+		var target := _spawn(CHASER, CHASER_SCENE, 6.0, 0.0)
+		target.health = 1.0e9
+		await _seconds(Enemy.SPAWN_TIME + 0.4)
+		await _event("an explosive shell bursts on an enemy", 30, func() -> void: pistol.request_fire())
+		await _seconds(0.6)
+		await _event("a second explosive shell", 30, func() -> void: pistol.request_fire(), true)
+		await _seconds(0.6)
+		var splitter := {"muzzle": Items.make(&"splitter")}
+		pistol.apply_build(WeaponStats.build(Progression.PISTOL_BASE, Progression.core_levels(), splitter), splitter)
+		await _seconds(0.3)
+		await _event("a Splitter shot (three rays)", 10, func() -> void: pistol.request_fire())
+		await _seconds(0.5)
+		await _event("a second Splitter shot", 10, func() -> void: pistol.request_fire(), true)
+		await _seconds(0.5)
+		pistol.apply_build(Progression.build_stats(), Progression.equipped())
+		game.wave_runner.clear_enemies()
+		await _seconds(0.3)
+		# Lambdas capture locals by value, so each spawn lands in a holder array.
+		var spawned: Array[Enemy] = []
+		await _event("a heavy spawns from the reserve", 20, func() -> void: spawned.append(_spawn(HEAVY, HEAVY_SCENE, 7.0, 0.0)))
+		var heavy: Enemy = spawned.pop_back()
+		heavy.health = 1.0e9
+		await _seconds(Enemy.SPAWN_TIME + 0.2)
+		var core: Vector3 = heavy.to_global(heavy.definition.weak_point_offset)
+		await _event("a weak-point hit (gold number)", 30, func() -> void:
+			ShotPipeline.apply_hit(heavy, core, Vector3.FORWARD, pistol.stats, WeaponStats.ShotContext.new(), _shot(pistol))
+			Fx.damage_number(game, core, 20.0, false, true))
+		await _seconds(0.7)
+		await _event("a shield bearer spawns from the reserve", 20, func() -> void: spawned.append(_spawn(BEARER, BEARER_SCENE, 6.0, 2.5)))
+		var bearer: Enemy = spawned.pop_back()
+		bearer.health = 1.0e9
+		await _seconds(Enemy.SPAWN_TIME + 0.5)
+		game.player.look_at(Vector3(bearer.global_position.x, game.player.global_position.y, bearer.global_position.z), Vector3.UP)
+		await _seconds(0.2)
+		await _event("a shot stops on the shield", 10, func() -> void: pistol.request_fire())
+		await _seconds(0.5)
+		await _event("a second shot on the shield", 10, func() -> void: pistol.request_fire(), true)
+		await _seconds(0.5)
+		game.wave_runner.clear_enemies()
+		game.player.rotation = Vector3.ZERO
+		await _seconds(0.3)
+		await _event("the Foreman spawns from the reserve", 20, func() -> void: spawned.append(_spawn(FOREMAN, FOREMAN_SCENE, 12.0, 0.0)))
+		var foreman: Foreman = spawned.pop_back()
+		foreman.health = 1.0e9
+		foreman._volley_cooldown = 99.0
+		foreman._pool_cooldown = 99.0
+		await _seconds(Enemy.SPAWN_TIME + 0.2)
+		await _event("the Foreman calls in drones", 100, func() -> void: foreman._summon_cooldown = 0.0)
+		await _event("the Foreman lays a molten pool", 110, func() -> void: foreman.lay_pool(game.player.global_position + -game.player.global_basis.z * 4.0))
+		await _event("a second molten pool", 110, func() -> void: foreman.lay_pool(game.player.global_position + -game.player.global_basis.z * 4.0 + Vector3.RIGHT * 3.0), true)
+		game.wave_runner.clear_enemies()
+		game.projectiles.clear_all()
+		await _seconds(0.5)
+
+	## The Scrapyard: entering is a load at the bench, but the door opening and a core pickup happen
+	## mid-run.
+	func _scrapyard_events() -> void:
+		for wave in [1, 2, 3, 4, 5]:
+			Progression.record_wave_cleared(wave, 0, 1.0)
+		game.open_bench()
+		await _seconds(0.3)
+		game.enter_area("scrapyard")
+		await _seconds(2.5)
+		game.wave_runner.stop()
+		game.wave_runner.clear_enemies()
+		game.player.health = 1.0e9
+		var yard: Node3D = game.arena
+		await _seconds(0.5)
+		await _event("the Scrapyard's door opens", 20, func() -> void: yard._set_door(true))
+		var core: Node3D = yard._cores[0]
+		await _event("a scrap core is picked up", 10, func() -> void:
+			game.player.global_position = Vector3(core.global_position.x, game.player.global_position.y, core.global_position.z))
+
+	func _shot(pistol: Pistol) -> ShotPipeline.ShotState:
+		var shot := ShotPipeline.ShotState.new()
+		shot.rng = RandomNumberGenerator.new()
+		shot.scene = pistol
+		return shot
 
 	## Runs `action`, then measures `frames` frames: the worst and median frame and the change in
 	## GPU buffer and texture memory from before the action to after the frames. `repeat` marks an

@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="AttachmentDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/attachment_definition.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/weapons/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_1"]
+script = ExtResource("2_mod")
+stat = &"damage"
+flat = 0.0
+percent = -0.1
+
+[resource]
+script = ExtResource("1_def")
+id = &"ricochet_rounds"
+display_name = "Ricochet rounds"
+slot = &"ammo"
+description = "Fast simulated rounds that bounce off walls twice, keeping 80% of their damage per bounce. Hits a little softer."
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1")])
+mark_scale = 0.15
+behaviours = {"projectile": "ricochet", "bounces": 2, "projectile_color": Color(0.45, 0.9, 1, 1)}
+is_default = false
+unlock_wave = 0
+gate_text = ""
+visual = {"slide_color": Color(0.2, 0.35, 0.42, 1)}

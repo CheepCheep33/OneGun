@@ -124,6 +124,69 @@ class Tour:
 		game.player.take_damage(10000.0)
 		await _frames(3)
 		await _shot("09_death_screen")
+
+		# Milestone 4: the crafting table with a Rare selected for a reroll.
+		game.open_bench()
+		await _frames(2)
+		for part in ["scrap", "alloy", "circuits", "cores"]:
+			Progression.data["parts"][part] = 12
+		var rare := Items.make(&"splitter", Items.Rarity.RARE, [{"id": "sharp", "roll": 0.6}, {"id": "deep", "roll": 0.2}, {"id": "arcing", "roll": 0.7}])
+		Progression.data["inventory"].clear()
+		Progression.data["overflow"].clear()
+		Progression.add_item(rare, "tour")
+		game.bench.open()
+		game.bench.show_tab("craft")
+		game.bench.select_item(int(rare["uid"]))
+		await _frames(3)
+		await _shot("10_bench_crafting_table")
+
+		# Wave 11's roster: heavies and shield bearers, Splitter and Explosive shells in the air.
+		for wave in range(1, 11):
+			Progression.record_wave_cleared(wave, 0, 30.0)
+		game.start_wave(11)
+		await _frames(5)
+		game.wave_runner.stop()
+		var ahead: Vector3 = -game.player.global_basis.z
+		for spot in [[7.0, -2.5, "heavy"], [6.0, 1.5, "shield_bearer"], [9.0, 3.5, "heavy"], [8.0, -0.5, "shield_bearer"]]:
+			game.wave_runner.spawn_at(game.player.global_position + ahead * spot[0] + Vector3.RIGHT * spot[1],
+				load("res://data/enemies/%s.tres" % spot[2]), load("res://scenes/enemies/%s.tscn" % spot[2]))
+		await _seconds(Enemy.SPAWN_TIME + 0.6)
+		var shells := {"muzzle": Items.make(&"splitter"), "ammo": Items.make(&"explosive_rounds")}
+		game.player.pistol.apply_build(WeaponStats.build(Progression.PISTOL_BASE, Progression.core_levels(), shells), shells)
+		game.player.pistol.request_fire()
+		await _frames(6)
+		await _shot("11_heavies_and_shield_bearers")
+
+		# The Foreman: a summon telegraph, a molten pool warning and one burning.
+		game.wave_runner.clear_enemies()
+		game.projectiles.clear_all()
+		await _frames(2)
+		var foreman: Foreman = game.wave_runner.spawn_at(game.player.global_position + ahead * 10.0,
+			load("res://data/enemies/foreman.tres"), load("res://scenes/enemies/foreman.tscn"))
+		await _seconds(Enemy.SPAWN_TIME + 0.2)
+		foreman._volley_cooldown = 99.0
+		foreman._pool_cooldown = 99.0
+		foreman.lay_pool(game.player.global_position + ahead * 4.0 + Vector3.RIGHT * 2.5)
+		await _seconds(Foreman.POOL_WARNING + 0.3)
+		foreman.lay_pool(game.player.global_position + ahead * 5.0 + Vector3.LEFT * 2.5)
+		foreman._summon_cooldown = 0.0
+		await _seconds(0.7)
+		await _shot("12_foreman_pools_and_summon")
+		game.wave_runner.clear_enemies()
+
+		# The Scrapyard: wrecks in rows, scrap cores, the sealed door; then the extraction banner.
+		game.open_bench()
+		await _frames(2)
+		Progression.record_wave_cleared(5, 0, 30.0)
+		game.enter_area("scrapyard")
+		await _seconds(2.0)
+		await _shot("13_scrapyard")
+		var yard: Node3D = game.arena
+		yard.elapsed = yard.RUN_SECONDS
+		await _frames(3)
+		game.player.global_position = Vector3(yard._pad.global_position.x, game.player.global_position.y, yard._pad.global_position.z)
+		await _frames(6)
+		await _shot("14_scrapyard_extracted")
 		get_tree().quit(0)
 
 

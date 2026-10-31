@@ -37,6 +37,8 @@ const FIRST_RUN_MAX := 125.0
 const HIT_RATE := 0.8
 ## Seconds spent finding, approaching or waiting for each enemy on top of the shooting itself.
 const ENGAGE_SECONDS := 1.2
+## Extra seconds a shield bearer costs: waiting for its swing to drop the shield, or flanking it.
+const SHIELD_ENGAGE_SECONDS := 2.0
 ## Extra seconds a boss costs in telegraphs and phases where it cannot be shot.
 const BOSS_OVERHEAD_SECONDS := 15.0
 ## Real combat runs slower than the kill arithmetic: moving, dodging bolts, reloading at the wrong
@@ -72,13 +74,21 @@ const FIRST_RUN_BENCH_EXTRA_SECONDS := 30.0
 const FIRST_RUN_BOSS_STORY_SECONDS := 90.0
 const FIRST_RUN_SIDE_AREA_SECONDS := {2: 240.0, 5: 300.0}
 
+## The crafting table (Milestone 4, real costs and rules): at every bench the player dismantles the
+## spares the gunsmith can compare (open slot, unlocked base, worse than what is fitted) and rerolls
+## a fitted item's weakest affix while it adds less than REROLL_USEFUL_SHARE of sustained damage
+## per second, up to MAX_REROLLS_PER_BENCH. Crafting new items is left out: a crafted base at a
+## chosen rarity rarely beats the drops a run equips, and the parts go further on rerolls.
+const REROLL_USEFUL_SHARE := 0.02
+const MAX_REROLLS_PER_BENCH := 3
+
 # ------------------------------------------------------------------ systems not built yet (plan budget)
 
-## Skill trees arrive in Milestone 4. The plan budgets about 1.3x effective damage by the end of
+## Skill trees arrive in Milestone 5. The plan budgets about 1.3x effective damage by the end of
 ## a first run; later runs fill the third tree with diminishing returns.
 const SKILL_DAMAGE_BY_RUNS: Array[float] = [0.0, 0.30, 0.40, 0.45, 0.45]
-## The crafting table (Milestone 4) refines kept gear one mark per run; the credits it costs are
-## not modelled, which flatters the gear side slightly.
+## Refine (Milestone 5) raises kept gear one mark per run; the credits it costs are not modelled,
+## which flatters the gear side slightly.
 const MARKS_PER_RUN := 1
 ## Forge tree (Milestone 7): nodes bought with Reforge tokens, in this order while tokens last.
 ## "Head start" grants starting damage levels that grow with the tier: none at tier 1, one per
@@ -95,10 +105,15 @@ const FORGE_NODES := [
 ## Tokens per Reforge: one for the clear, one for the tier's first boss kill (no endless waves).
 const TOKENS_PER_REFORGE := 2
 
-## Waves 11 to 20 are not authored until Milestone 4. They are extrapolated from waves 6 to 10:
-## the same groups with more enemies and the next wave tier's bonus, bosses at 15 and 20.
-const EXTRAPOLATED_COUNT_SCALE := 1.3
-const EXTRAPOLATED_BONUS_SCALE := 1.6
+## Waves 1 to 15 are authored (Milestone 4). Waves 16 to 20 repeat waves 11 to 15 until Milestone 5
+## authors them; the game's wave-tier step already makes them tougher and better paid. (Milestone 3
+## built 11 to 20 from 6 to 10 with 1.3x counts and 1.6x bonuses; 11 to 15 now carry that step
+## themselves, so scaling them again would count it twice.) The Sentinel (wave 15) and the Core
+## Guardian (wave 20) also arrive with Milestone 5; until then a Warden stand-in with their health
+## share holds their place, and wave 15 counts as a boss wave as the plan has it.
+const EXTRAPOLATED_COUNT_SCALE := 1.0
+const EXTRAPOLATED_BONUS_SCALE := 1.0
+const AUTHORED_WAVES := 15
 const SENTINEL_HEALTH_SCALE := 1.6
 const GUARDIAN_HEALTH_SCALE := 2.5
 
@@ -203,12 +218,14 @@ func _run_tier(tier: int, previous_end_dps: float) -> TierReport:
 			report.farm_minutes += farm_seconds / 60.0
 			farms += 1
 			_equip_best_from_inventory()
+			_use_crafting_table()
 			_buy()
 		report.farms += farms
 		var seconds := _fight_wave(wave, report)
 		minutes += seconds / 60.0
-		# Bench: equip anything better, then spend.
+		# Bench: equip anything better, use the crafting table, then spend.
 		_equip_best_from_inventory()
+		_use_crafting_table()
 		_buy()
 		minutes += BENCH_SECONDS / 60.0
 		if first_run:
@@ -246,8 +263,10 @@ func _fight_wave(wave: SimWave, report: TierReport) -> float:
 	var kill_credits := 0.0
 	var replay := Progression.is_wave_cleared(wave.number)
 	for group in wave.groups:
-		var health := _enemy_health(group.definition, wave.number)
+		var health := _enemy_health(group.definition, wave.number) * _armour_factor(stats, group.definition, wave.number)
 		var seconds_each := health / maxf(dps, 0.01) + ENGAGE_SECONDS
+		if group.definition.id == &"shield_bearer":
+			seconds_each += SHIELD_ENGAGE_SECONDS
 		if group.definition.is_boss:
 			seconds_each += BOSS_OVERHEAD_SECONDS
 		kill_seconds += seconds_each * group.count
@@ -283,6 +302,16 @@ func _fight_wave(wave: SimWave, report: TierReport) -> float:
 			report.drops += 1
 	report.income += income
 	return seconds
+
+
+## How much longer armour makes a kill: each ray's damage over what lands through the armour, as
+## Enemy.take_hit takes it (weak-point hits, which skip armour, are left out: the cautious side).
+func _armour_factor(stats: WeaponStats, definition: EnemyDefinition, wave: int) -> float:
+	if definition.armor <= 0.0:
+		return 1.0
+	var per_ray := stats.damage * WeaponStats.falloff_multiplier(stats, SHOOT_DISTANCE) * WeaponStats.ray_share(stats)
+	var landed := maxf(per_ray - definition.armor * Progression.reward_multiplier(wave), per_ray * (1.0 - Enemy.ARMOR_MAX_SHARE))
+	return per_ray / maxf(landed, 0.01)
 
 
 ## Enemy health at a wave of the current tier, exactly as the wave runner scales it.
@@ -335,6 +364,42 @@ func _equip_best_from_inventory() -> void:
 		if best_uid >= 0:
 			Progression.equip(best_uid)
 	Progression.dismantle_unlocked_commons()
+
+
+## Dismantles comparable spares, then rerolls weak affixes on the fitted build (see
+## REROLL_USEFUL_SHARE). Items for slots or bases still locked this tier are kept for later.
+func _use_crafting_table() -> void:
+	for list in [Progression.inventory(), Progression.overflow()]:
+		for item in list.duplicate():
+			var base := Items.get_attachment(item["base"])
+			if base != null and Progression.is_slot_open(base.slot) and Progression.is_base_unlocked(base):
+				Progression.dismantle(int(item["uid"]))
+	for i in MAX_REROLLS_PER_BENCH:
+		var pick := _weakest_affix()
+		if pick.is_empty() or not Progression.reroll_affix(int(pick["uid"]), int(pick["index"])):
+			return
+
+
+## The fitted affix that adds the least sustained damage per second, when it adds under
+## REROLL_USEFUL_SHARE and its reroll is affordable. Empty otherwise.
+func _weakest_affix() -> Dictionary:
+	var current := Progression.build_stats().sustained_dps(SHOOT_DISTANCE)
+	var best := {}
+	var lowest := current * REROLL_USEFUL_SHARE
+	for slot in Items.SLOT_IDS:
+		var item: Variant = Progression.equipped_in(slot)
+		if not (item is Dictionary):
+			continue
+		for index in item.get("affixes", []).size():
+			if Progression.reroll_block_reason(int(item["uid"]), index) != "":
+				continue
+			var without: Dictionary = item.duplicate(true)
+			without["affixes"].remove_at(index)
+			var adds := current - Progression.preview_equipped(slot, without).sustained_dps(SHOOT_DISTANCE)
+			if adds < lowest:
+				lowest = adds
+				best = {"uid": int(item["uid"]), "index": index}
+	return best
 
 
 # ------------------------------------------------------------------ Reforge
@@ -397,11 +462,15 @@ func _load_waves() -> Array[SimWave]:
 			sim_group.interval = group.interval
 			wave.groups.append(sim_group)
 		waves.append(wave)
-	assert(waves.size() == 10, "the simulation extrapolates from ten authored waves")
+	assert(waves.size() == AUTHORED_WAVES, "the simulation extrapolates from fifteen authored waves")
 	var sentinel := _boss_stand_in("sentinel", SENTINEL_HEALTH_SCALE)
 	var guardian := _boss_stand_in("core_guardian", GUARDIAN_HEALTH_SCALE)
-	for number in range(11, RUN_WAVES + 1):
-		var template: SimWave = waves[(number - 6) % 5 + 5]
+	var fifteen: SimWave = waves[AUTHORED_WAVES - 1]
+	if not fifteen.is_boss_wave:
+		fifteen.is_boss_wave = true
+		fifteen.groups.append(_boss_group(sentinel))
+	for number in range(AUTHORED_WAVES + 1, RUN_WAVES + 1):
+		var template: SimWave = waves[(number - AUTHORED_WAVES - 1) % 5 + AUTHORED_WAVES - 5]
 		var wave := SimWave.new()
 		wave.number = number
 		wave.completion_bonus = roundi(template.completion_bonus * EXTRAPOLATED_BONUS_SCALE)
@@ -416,14 +485,18 @@ func _load_waves() -> Array[SimWave]:
 			sim_group.interval = group.interval
 			wave.groups.append(sim_group)
 		if wave.is_boss_wave:
-			var boss := SimGroup.new()
-			boss.definition = sentinel if number == 15 else guardian
-			boss.count = 1
-			boss.start_delay = 2.0
-			boss.interval = 1.0
-			wave.groups.append(boss)
+			wave.groups.append(_boss_group(guardian))
 		waves.append(wave)
 	return waves
+
+
+func _boss_group(definition: EnemyDefinition) -> SimGroup:
+	var boss := SimGroup.new()
+	boss.definition = definition
+	boss.count = 1
+	boss.start_delay = 2.0
+	boss.interval = 1.0
+	return boss
 
 
 func _boss_stand_in(id: String, health_scale: float) -> EnemyDefinition:
@@ -439,8 +512,8 @@ func _boss_stand_in(id: String, health_scale: float) -> EnemyDefinition:
 
 func _print_report(reports: Array[TierReport]) -> void:
 	print("\nReforge simulation: first run plus %d consecutive Reforges" % TIERS_TO_SIMULATE)
-	print("Real: stats function, cost curves, loot tables, inventory rules, wave data 1-10, tier steps.")
-	print("Modelled: hit rate %.2f, %.1f s per enemy, combat pace x%.1f, %.0f s bench, %.0f min side content per tier, deaths and farming from shots to kill, first-run learning, waves 11-20 extrapolated, skills, marks, Forge." % [HIT_RATE, ENGAGE_SECONDS, COMBAT_PACE, BENCH_SECONDS, SIDE_CONTENT_MINUTES_PER_TIER])
+	print("Real: stats function, cost curves, loot tables, inventory rules, crafting table, wave data 1-15, armour, tier steps.")
+	print("Modelled: hit rate %.2f, %.1f s per enemy, combat pace x%.1f, %.0f s bench, %.0f min side content per tier, deaths and farming from shots to kill, first-run learning, waves 16-20 extrapolated, Sentinel and Guardian stand-ins, shields as engage time, skills, marks, Forge." % [HIT_RATE, ENGAGE_SECONDS, COMBAT_PACE, BENCH_SECONDS, SIDE_CONTENT_MINUTES_PER_TIER])
 	print("Minutes are anchored to the plan's first-run estimate through COMBAT_PACE; shots to kill and recovery do not depend on it.")
 	print("")
 	print("%-5s %-7s %-7s %-10s %-10s %-12s %-9s %-7s %-7s %-7s %-7s %-7s %-9s %-9s" % [

@@ -42,6 +42,19 @@ const REFORGE_STEP := 2.5
 ## of the previous one's damage; each bounce keeps this share.
 const PIERCE_FALLOFF := 0.75
 const BOUNCE_FALLOFF := 0.8
+## A multi-ray muzzle (Splitter) divides one shot's damage across its rays so all of them together
+## deal this share of one shot (plan: damage split).
+const SPLIT_TOTAL := 1.25
+## Explosive ammo: the round deals this share on a direct hit and the blast this share to every
+## enemy inside blast_radius, the direct target included. Blasts never crit, pierce or proc.
+const EXPLOSIVE_DIRECT_SHARE := 0.6
+## A robot's half-width for the readouts' spread estimate (ray_hit_share).
+const READOUT_TARGET_RADIUS := 0.45
+const EXPLOSIVE_BLAST_SHARE := 0.6
+## A weak-point hit (the heavy's core) multiplies after crits, by this times one plus the build's
+## weak-point damage, and ignores armour (plan: weak points).
+const WEAK_POINT_MULTIPLIER := 2.0
+const WEAK_POINT_KEY := "weak_point_damage"
 ## Representative distances for previews: the bench shows damage at these ranges so a barrel's
 ## range change is visible (plan: How stats are computed).
 const PREVIEW_DISTANCES: Array[float] = [10.0, 25.0, 40.0]
@@ -54,7 +67,8 @@ const DEFAULT_BEHAVIOURS := {
 	"pierce": 0,
 	"bounces": 0,
 	"projectile": "hitscan", # hitscan or a projectile profile id (see ProjectilePool.PROFILES)
-	"on_hit": "", # status effect id applied by the ammo (statuses arrive with Milestone 4)
+	"blast_radius": 0.0, # metres; above zero the round bursts where it stops (Explosive rounds)
+	"on_hit": "", # status effect id applied by the ammo (statuses arrive with Milestone 5)
 }
 
 var damage: float
@@ -148,6 +162,7 @@ static func build(base: WeaponBaseStats, core_levels: Dictionary = {}, equipped:
 	behaviours["bounces"] = clampi(int(behaviours.get("bounces", 0)), 0, BOUNCE_CAP)
 	behaviours["burst_size"] = maxi(int(behaviours.get("burst_size", 1)), 1)
 	behaviours["spread_degrees"] = maxf(float(behaviours.get("spread_degrees", 0.0)), 0.0)
+	behaviours["blast_radius"] = maxf(float(behaviours.get("blast_radius", 0.0)), 0.0)
 	stats.behaviours = behaviours
 
 	for key in flats.keys() + percents.keys():
@@ -183,7 +198,9 @@ static func resolve_shot(stats: WeaponStats, context: ShotContext, rng: RandomNu
 	shot.in_range = context.distance <= stats.max_range
 	if not shot.in_range:
 		return shot
-	var damage := stats.damage * falloff_multiplier(stats, context.distance)
+	var damage := stats.damage * falloff_multiplier(stats, context.distance) * ray_share(stats)
+	if stats.blast_radius() > 0.0:
+		damage *= EXPLOSIVE_DIRECT_SHARE
 	if stats.behaviours.get("fire_mode", "semi") == "charge":
 		damage *= 1.0 + 2.0 * clampf(context.charge, 0.0, 1.0)
 	if context.overclock_active:
@@ -198,6 +215,21 @@ static func resolve_shot(stats: WeaponStats, context: ShotContext, rng: RandomNu
 		damage *= stats.crit_multiplier
 	shot.damage = maxf(damage, 0.0)
 	return shot
+
+
+## The share of one shot's damage each ray deals: 1 for a single ray, SPLIT_TOTAL / rays for a
+## Splitter, so every ray together deals SPLIT_TOTAL.
+static func ray_share(stats: WeaponStats) -> float:
+	var rays := int(stats.behaviours.get("ray_count", 1))
+	return SPLIT_TOTAL / rays if rays > 1 else 1.0
+
+
+## What one ray's blast deals to each enemy inside its radius, at the distance the round travelled:
+## never a crit, so it is the same for every enemy it reaches. Zero without explosive ammo.
+static func blast_damage(stats: WeaponStats, distance: float) -> float:
+	if stats.blast_radius() <= 0.0 or distance > stats.max_range:
+		return 0.0
+	return stats.damage * falloff_multiplier(stats, distance) * ray_share(stats) * EXPLOSIVE_BLAST_SHARE
 
 
 ## 1.0 up to falloff_start, falling linearly to falloff_floor at falloff_end and beyond.
@@ -226,11 +258,26 @@ static func expected_damage(stats: WeaponStats, context: ShotContext) -> float:
 
 
 ## Expected damage of one trigger pull against a single enemy at a distance: every ray of the
-## shot lands on it, so a Splitter's total shows rather than one pellet.
+## shot lands on it, so a Splitter's total shows rather than one pellet, and an explosive round's
+## blast lands on its direct target too.
 static func expected_damage_at(stats: WeaponStats, distance: float) -> float:
 	var context := ShotContext.new()
 	context.distance = distance
-	return expected_damage(stats, context) * int(stats.behaviours.get("ray_count", 1))
+	var per_ray := expected_damage(stats, context) + blast_damage(stats, distance)
+	return per_ray * int(stats.behaviours.get("ray_count", 1)) * ray_hit_share(stats, distance)
+
+
+## The share of a pull's rays that land on one robot at `distance`: every ray is spread evenly over
+## a disc of spread_degrees (Pistol._ray_direction), and a robot is about READOUT_TARGET_RADIUS
+## wide. 1 without spread, so a Splitter reads as 125% up close and falls off past a few metres.
+static func ray_hit_share(stats: WeaponStats, distance: float) -> float:
+	var spread := float(stats.behaviours.get("spread_degrees", 0.0))
+	if spread <= 0.0:
+		return 1.0
+	var disc := distance * tan(deg_to_rad(spread))
+	if disc <= READOUT_TARGET_RADIUS:
+		return 1.0
+	return pow(READOUT_TARGET_RADIUS / disc, 2.0)
 
 
 func seconds_between_shots() -> float:
@@ -255,6 +302,15 @@ func pierce() -> int:
 	return int(behaviours.get("pierce", 0))
 
 
+func blast_radius() -> float:
+	return float(behaviours.get("blast_radius", 0.0))
+
+
+## One plus the build's weak-point damage bonus (the Precise affix).
+func weak_point_bonus() -> float:
+	return 1.0 + float(extra.get(WEAK_POINT_KEY, {}).get("percent", 0.0))
+
+
 ## Short human-readable list of the behaviours that differ from a plain semi-automatic pistol.
 func describe_behaviours() -> PackedStringArray:
 	var parts := PackedStringArray()
@@ -273,8 +329,13 @@ func describe_behaviours() -> PackedStringArray:
 		parts.append("%d rays" % int(behaviours.get("ray_count", 1)))
 	if int(behaviours.get("bounces", 0)) > 0:
 		parts.append("bounces %d" % int(behaviours.get("bounces", 0)))
-	if String(behaviours.get("projectile", "hitscan")) != "hitscan":
-		parts.append(String(behaviours.get("projectile", "")).capitalize() + " rounds")
+	match String(behaviours.get("projectile", "hitscan")):
+		"hitscan":
+			pass
+		"shell":
+			parts.append("explosive shells (%.1f m blast)" % blast_radius() if blast_radius() > 0.0 else "shells")
+		var profile:
+			parts.append(String(profile).capitalize() + " rounds")
 	return parts
 
 
