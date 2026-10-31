@@ -5,8 +5,9 @@ extends CharacterBody3D
 ## Warden) are scenes with their own `_behave` step, `_reset_behaviour` and telegraph colours.
 ## Nodes are recycled by the wave runner, so every bit of state lives in reset(). Armour and weak
 ## points come from the definition: armour takes a flat amount off every hit (at least a quarter
-## of the hit still lands), a weak-point hit ignores it. Status effects and enemy affixes land here
-## in later milestones.
+## of the hit still lands), a weak-point hit ignores it. Status effects (burn, slow, stun; see
+## StatusEffects) live here too: the ammo names one, the enemy owns its timers and glow. Enemy
+## affixes arrive with Reforge (Milestone 7).
 
 signal died(enemy: Enemy)
 ## Emitted on every death, by the player or the fall limit, once the node can leave the arena.
@@ -43,6 +44,20 @@ var is_spawning := true
 var summoned := false
 ## What the last take_hit actually removed, after armour, for damage numbers.
 var last_damage_taken := 0.0
+## Set by the wave runner from the encounter's modifiers (the Signal Tower's floors): movement
+## speed multiplier and extra flat armour (scaled like the definition's).
+var speed_modifier := 1.0
+var armor_bonus := 0.0
+## Status effects (StatusEffects): seconds left, burn damage a second, slow share, and how long
+## the current slow has lasted (Cryo shatters a slow at least SHATTER_AFTER old).
+var burn_left := 0.0
+var burn_dps := 0.0
+var slow_left := 0.0
+var slow_share := 0.0
+var slow_age := 0.0
+var stun_left := 0.0
+var _burn_tick := 0.0
+var _burn_owed := 0.0
 
 var _spawn_time := 0.0
 var _hit_flash_left := 0.0
@@ -87,6 +102,7 @@ func reset() -> void:
 	_stagger_left = 0.0
 	_repath_left = 0.0
 	velocity = Vector3.ZERO
+	clear_statuses()
 	collision_layer = _base_collision_layer
 	collision_mask = _base_collision_mask
 	health = max_health
@@ -101,6 +117,10 @@ func _physics_process(delta: float) -> void:
 		return
 	_hit_flash_left = maxf(_hit_flash_left - delta, 0.0)
 	_stagger_left = maxf(_stagger_left - delta, 0.0)
+	if burn_left > 0.0 or slow_left > 0.0 or stun_left > 0.0:
+		_tick_statuses(delta)
+		if not is_alive:
+			return
 	if not definition.flying and not is_on_floor():
 		velocity.y -= _gravity * delta
 	if is_spawning:
@@ -123,6 +143,8 @@ func _process(delta: float) -> void:
 	if is_spawning:
 		visual_scale *= lerpf(0.2, 1.0, clampf(_spawn_time / SPAWN_TIME, 0.0, 1.0))
 	var glow := _visual_glow()
+	if glow == Color.BLACK:
+		glow = _status_glow()
 	if _hit_flash_left > 0.0:
 		glow = Color(1.0, 1.0, 1.0) * 2.5
 	_visual.scale = Vector3.ONE * visual_scale
@@ -136,8 +158,8 @@ func take_hit(damage: float, _point: Vector3, direction: Vector3, weak_point := 
 	last_damage_taken = 0.0
 	if not is_alive:
 		return false
-	if not weak_point and definition.armor > 0.0:
-		damage = maxf(damage - definition.armor * health_scale, damage * (1.0 - ARMOR_MAX_SHARE))
+	if not weak_point and armor() > 0.0:
+		damage = maxf(damage - armor(), damage * (1.0 - ARMOR_MAX_SHARE))
 	last_damage_taken = damage
 	health -= damage
 	_hit_flash_left = HIT_FLASH_TIME
@@ -149,12 +171,130 @@ func take_hit(damage: float, _point: Vector3, direction: Vector3, weak_point := 
 	return false
 
 
+## Flat armour a hit loses, scaled like health: the definition's plus the encounter's bonus.
+func armor() -> float:
+	return (definition.armor + armor_bonus) * health_scale
+
+
+func is_armored() -> bool:
+	return armor() > 0.0
+
+
+func health_fraction() -> float:
+	return clampf(health / maxf(max_health, 0.001), 0.0, 1.0)
+
+
 ## True when a hit at `point` (world space) lands on the definition's weak point, a sphere in the
-## enemy's own space (the heavy's core on its back).
-func is_weak_point(point: Vector3) -> bool:
-	if definition == null or definition.weak_point_radius <= 0.0:
+## enemy's own space (the heavy's core on its back). `scale` widens it (Reflex sight).
+func is_weak_point(point: Vector3, scale := 1.0) -> bool:
+	if definition == null or definition.weak_point_radius <= 0.0 or not _weak_point_open():
 		return false
-	return to_local(point).distance_to(definition.weak_point_offset) <= definition.weak_point_radius
+	return to_local(point).distance_to(definition.weak_point_offset) <= definition.weak_point_radius * scale
+
+
+## Damage from a status (a burn tick, a shatter): no armour, no stagger, no procs. Pays like a
+## kill by the player when it finishes the robot.
+func take_status_damage(damage: float) -> bool:
+	last_damage_taken = 0.0
+	if not is_alive or damage <= 0.0:
+		return false
+	last_damage_taken = damage
+	health -= damage
+	health_changed.emit(maxf(health, 0.0), max_health)
+	if health <= 0.0:
+		_die(Vector3.ZERO, true)
+		return true
+	return false
+
+
+# ------------------------------------------------------------------ status effects
+
+## Sets the robot burning for `dps` a second over `duration`. A burn on a burning robot refreshes
+## the timer and keeps the stronger of the two rates: it never stacks.
+func apply_burn(dps: float, duration: float) -> void:
+	if not is_alive or dps <= 0.0:
+		return
+	if burn_left <= 0.0:
+		_burn_tick = StatusEffects.BURN_TICK
+	burn_dps = maxf(burn_dps, dps) if burn_left > 0.0 else dps
+	burn_left = maxf(burn_left, duration)
+
+
+## Slows the robot by `share`. Refreshes the timer; a stronger slow replaces a weaker one; the
+## slow's age keeps counting while it is refreshed (Cryo shatters an old slow).
+func apply_slow(share: float, duration: float) -> void:
+	if not is_alive:
+		return
+	if slow_left <= 0.0:
+		slow_age = 0.0
+	slow_share = maxf(slow_share, share) if slow_left > 0.0 else share
+	slow_left = maxf(slow_left, duration)
+
+
+func apply_stun(duration: float) -> void:
+	if is_alive:
+		stun_left = maxf(stun_left, duration)
+
+
+func is_slowed() -> bool:
+	return slow_left > 0.0
+
+
+## True when a Cryo hit now shatters the frost instead of refreshing it.
+func can_shatter() -> bool:
+	return slow_left > 0.0 and slow_age >= StatusEffects.SHATTER_AFTER
+
+
+func consume_slow() -> void:
+	slow_left = 0.0
+	slow_share = 0.0
+	slow_age = 0.0
+
+
+func clear_statuses() -> void:
+	burn_left = 0.0
+	burn_dps = 0.0
+	slow_left = 0.0
+	slow_share = 0.0
+	slow_age = 0.0
+	stun_left = 0.0
+	_burn_tick = 0.0
+	_burn_owed = 0.0
+
+
+func _tick_statuses(delta: float) -> void:
+	stun_left = maxf(stun_left - delta, 0.0)
+	if slow_left > 0.0:
+		slow_left -= delta
+		slow_age += delta
+		if slow_left <= 0.0:
+			consume_slow()
+	if burn_left > 0.0:
+		# Damage accrues every frame and lands every BURN_TICK (and when the burn ends), so a
+		# number shows twice a second rather than every frame.
+		_burn_owed += burn_dps * minf(delta, burn_left)
+		burn_left -= delta
+		_burn_tick -= delta
+		if _burn_tick <= 0.0 or burn_left <= 0.0:
+			_burn_tick = StatusEffects.BURN_TICK
+			var owed := _burn_owed
+			_burn_owed = 0.0
+			var killed := take_status_damage(owed)
+			if Settings.show_damage_numbers and last_damage_taken > 0.0:
+				Fx.damage_number(self, center() + Vector3.UP * 0.4, last_damage_taken, killed)
+		if burn_left <= 0.0:
+			burn_left = 0.0
+			burn_dps = 0.0
+
+
+func _status_glow() -> Color:
+	if stun_left > 0.0:
+		return StatusEffects.STUN_GLOW
+	if burn_left > 0.0:
+		return StatusEffects.BURN_GLOW
+	if slow_left > 0.0:
+		return StatusEffects.SLOW_GLOW
+	return Color.BLACK
 
 
 ## Takes the enemy out without a kill: no credits, no drop, a burst where it was (a boss's adds
@@ -212,6 +352,11 @@ func _visual_tick(_delta: float) -> void:
 	pass
 
 
+## False while a boss keeps its weak point shut (the Core Guardian between vents).
+func _weak_point_open() -> bool:
+	return true
+
+
 ## Runs once as the enemy dies, before it leaves the arena: hide telegraphs, drop shields.
 func _on_death() -> void:
 	pass
@@ -246,9 +391,12 @@ func _set_horizontal_velocity(value: Vector3) -> void:
 	velocity.z = value.z
 
 
-## Speed after stagger from a recent hit.
+## Speed after stagger from a recent hit, slows and stuns, and the encounter's speed modifier.
 func _speed_scale() -> float:
-	return STAGGER_SPEED_SCALE if _stagger_left > 0.0 else 1.0
+	if stun_left > 0.0:
+		return 0.0
+	var scale := STAGGER_SPEED_SCALE if _stagger_left > 0.0 else 1.0
+	return scale * (1.0 - slow_share) * speed_modifier
 
 
 ## Direction of the next step along the navmesh toward the target (straight line while the path

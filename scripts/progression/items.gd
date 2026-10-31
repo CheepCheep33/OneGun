@@ -34,6 +34,10 @@ const BASE_IDS: Array[StringName] = [
 	&"standard_magazine", &"extended_magazine", &"fast_magazine",
 	&"open_muzzle", &"splitter", &"overpressure",
 	&"standard_rounds", &"explosive_rounds", &"ricochet_rounds",
+	&"charge", &"short_barrel", &"compensator", &"drum", &"overflow",
+	&"incendiary", &"cryo", &"shock", &"hollow_point",
+	&"iron_sights", &"reflex", &"scanner", &"rangefinder",
+	&"no_underbarrel", &"grip", &"laser", &"launcher", &"shield_emitter",
 ]
 const AFFIX_IDS: Array[StringName] = [
 	&"sharp", &"rapid", &"deep", &"quick", &"keen", &"brutal", &"piercing", &"thrifty", &"arcing",
@@ -123,7 +127,7 @@ static func modifiers_of(item: Dictionary) -> Array[StatModifier]:
 	var base := get_attachment(item["base"])
 	if base == null:
 		return result
-	result.append_array(base.modifiers_at_mark(int(item.get("mark", MIN_MARK))))
+	result.append_array(base.modifiers_at_mark(int(item.get("mark", MIN_MARK)), is_legendary(item)))
 	for affix in item.get("affixes", []):
 		var definition := get_affix(affix["id"])
 		if definition:
@@ -134,7 +138,27 @@ static func modifiers_of(item: Dictionary) -> Array[StatModifier]:
 static func display_name(item: Dictionary) -> String:
 	var base := get_attachment(item["base"])
 	var name := base.display_name if base else String(item["base"])
+	if base and is_legendary(item):
+		name = "%s (%s)" % [base.legendary_name, base.display_name]
 	return "%s %s" % [name, mark_numeral(int(item.get("mark", MIN_MARK)))]
+
+
+## True for a Legendary of a base that has a unique: its unique's modifiers and behaviours apply.
+static func is_legendary(item: Dictionary) -> bool:
+	if int(item.get("rarity", 0)) != Rarity.LEGENDARY:
+		return false
+	var base := get_attachment(item.get("base", ""))
+	return base != null and base.has_legendary()
+
+
+## The bases that have a Legendary unique, in catalogue order (the Core Guardian's first-kill drop
+## and transmute pick from these).
+static func legendary_bases() -> Array[AttachmentDefinition]:
+	var result: Array[AttachmentDefinition] = []
+	for definition in all_attachments():
+		if definition.has_legendary():
+			result.append(definition)
+	return result
 
 
 static func mark_numeral(mark: int) -> String:

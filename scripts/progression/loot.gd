@@ -18,11 +18,17 @@ const REPLAY_MAX_RARITY := Items.Rarity.UNCOMMON
 
 ## Rolls one kill's drop. Empty when nothing drops. `bases` are the bases that may drop right now
 ## (non-default, slot open, gate passed); `loot_weight` scales the chance for fragile enemies.
+## `luck` raises the per-kill chances (the Scavenger skill: 0.3 is 30% more often). A boss whose
+## definition has first_kill_legendary drops a Legendary of one of `legendary_bases` on its first
+## clear (the Core Guardian: the first run's only Legendary).
 static func roll_kill_drop(definition: EnemyDefinition, bases: Array[AttachmentDefinition],
-		rng: RandomNumberGenerator, is_replay := false) -> Dictionary:
+		rng: RandomNumberGenerator, is_replay := false, luck := 0.0,
+		legendary_bases: Array[AttachmentDefinition] = []) -> Dictionary:
 	if definition == null or bases.is_empty():
 		return {}
 	var rarity: int
+	if definition.is_boss and definition.first_kill_legendary and not is_replay and not legendary_bases.is_empty():
+		return make_item(pick_base(legendary_bases, rng), Items.Rarity.LEGENDARY, rng)
 	if definition.is_boss:
 		rarity = BOSS_REPLAY_RARITY if is_replay else BOSS_FIRST_CLEAR_RARITY
 	elif definition.rare_chance > 0.0 and rng.randf() < definition.rare_chance:
@@ -30,8 +36,8 @@ static func roll_kill_drop(definition: EnemyDefinition, bases: Array[AttachmentD
 		rarity = Items.Rarity.RARE
 	else:
 		var roll := rng.randf()
-		var uncommon := UNCOMMON_CHANCE * definition.loot_weight
-		var common := COMMON_CHANCE * definition.loot_weight
+		var uncommon := UNCOMMON_CHANCE * definition.loot_weight * (1.0 + luck)
+		var common := COMMON_CHANCE * definition.loot_weight * (1.0 + luck)
 		if roll < uncommon:
 			rarity = Items.Rarity.UNCOMMON
 		elif roll < uncommon + common:

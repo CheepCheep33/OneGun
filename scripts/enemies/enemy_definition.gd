@@ -25,6 +25,10 @@ extends Resource
 @export var loot_weight := 1.0
 ## Bosses get a HUD health bar, drop guaranteed loot straight into the inventory and double the wave bonus.
 @export var is_boss := false
+## The boss's first kill drops a Legendary instead of an Epic (the Core Guardian).
+@export var first_kill_legendary := false
+## The Scanner optic marks this enemy through walls (turrets: "Scanner optic to find it").
+@export var scanner_marked := false
 
 @export_group("Armour")
 ## Flat damage taken off every hit (scaled with the enemy's health); a weak-point hit ignores it,

@@ -206,7 +206,7 @@ func _tick_pools(delta: float) -> void:
 			pool.molten.visible = true
 			pool.molten.scale = Vector3(POOL_RADIUS, 1.0, POOL_RADIUS)
 		if target_alive() and _player_in_pool(pool):
-			target.take_damage(POOL_DAMAGE_PER_SECOND * delta)
+			target.take_damage(POOL_DAMAGE_PER_SECOND * delta, Vector3.INF, true)
 
 
 func _player_in_pool(pool: Pool) -> bool:

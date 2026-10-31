@@ -15,6 +15,12 @@ stat = &"recoil"
 flat = 0.0
 percent = 0.2
 
+[sub_resource type="Resource" id="Mod_3"]
+script = ExtResource("2_mod")
+stat = &"range"
+flat = 0.0
+percent = 0.3
+
 [resource]
 script = ExtResource("1_def")
 id = &"splitter"
@@ -28,3 +34,7 @@ is_default = false
 unlock_wave = 0
 gate_text = ""
 visual = {"barrel_extension": true, "muzzle_scale": 1.8}
+legendary_name = "Hydra"
+legendary_description = "Four rays instead of three, and the Splitter's range penalty is gone."
+legendary_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_3")])
+legendary_behaviours = {"ray_count": 4}

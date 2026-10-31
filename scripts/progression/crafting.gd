@@ -1,7 +1,7 @@
 class_name Crafting
 extends RefCounted
-## The crafting table's recipes (plan: Crafting). Milestone 4 ships craft and reroll; dismantle
-## lives in Progression since Milestone 3, and refine, fuse and transmute arrive with Milestone 5.
+## The crafting table's recipes (plan: Crafting): craft and reroll (Milestone 4), refine, fuse and
+## transmute (Milestone 5); dismantle lives in Progression since Milestone 3.
 ## Every recipe is known from the start, parts gate them, and nothing fails randomly: a craft always
 ## returns the chosen base at the chosen rarity, a reroll always replaces the chosen affix. Pure
 ## functions over the item dictionaries and a RandomNumberGenerator, so the bench, Progression and
@@ -21,6 +21,17 @@ const CRAFT_COSTS := [
 ## rising cost).
 const REROLL_LOWER_PARTS := 2
 const REROLL_OWN_PARTS := 1
+## Refine to mark II, III, IV, V (index = target mark): credits plus parts, flat per mark whatever
+## the base or rarity, so switching builds is never punished by sunk cost (plan: Refine cost: mark
+## II about four waves of income when it opens, mark V about twelve plus Cores).
+const REFINE_CREDITS := [0, 0, 500, 1200, 4000, 9000]
+const REFINE_PARTS := [{}, {}, {"alloy": 3}, {"circuits": 3}, {"cores": 2}, {"cores": 4}]
+## Fuse: three items of one rarity and slot plus this many of that rarity's part become one item
+## of the next rarity. Commons to Rares fuse (an Epic needs a Legendary core to go further).
+const FUSE_OWN_PARTS := 2
+const FUSABLE_MAX_RARITY := Items.Rarity.RARE
+## Transmute: a Legendary core turns an Epic of a base with a unique into its Legendary.
+const TRANSMUTE_COST := {"legendary_cores": 1}
 
 
 static func is_craftable_rarity(rarity: int) -> bool:
@@ -42,6 +53,45 @@ static func reroll_cost(item: Dictionary) -> Dictionary:
 		Items.PART_IDS[rarity - 1]: REROLL_LOWER_PARTS * steps,
 		Items.PART_IDS[rarity]: REROLL_OWN_PARTS * steps,
 	}
+
+
+## `cost` with the Tinkerer skill's share taken off each part, rounded, at least one of each.
+static func discounted(cost: Dictionary, discount: float) -> Dictionary:
+	if discount <= 0.0:
+		return cost
+	var result := {}
+	for part in cost:
+		result[part] = maxi(roundi(int(cost[part]) * (1.0 - discount)), 1)
+	return result
+
+
+## {"credits": int, "parts": Dictionary} to raise an item to `target_mark`.
+static func refine_cost(target_mark: int) -> Dictionary:
+	var index := clampi(target_mark, Items.MIN_MARK + 1, Items.MAX_MARK)
+	return {"credits": REFINE_CREDITS[index], "parts": REFINE_PARTS[index].duplicate()}
+
+
+static func is_fusable_rarity(rarity: int) -> bool:
+	return rarity >= Items.Rarity.COMMON and rarity <= FUSABLE_MAX_RARITY
+
+
+static func fuse_cost(rarity: int) -> Dictionary:
+	if not is_fusable_rarity(rarity):
+		return {}
+	return {Items.PART_IDS[rarity]: FUSE_OWN_PARTS}
+
+
+## What a part is worth in Scrap, for the conservation checks: each rarity's part is worth three
+## of the one below, as a fuse makes one item from three.
+static func part_value(part: String) -> int:
+	return roundi(pow(3.0, maxi(Items.PART_IDS.find(part), 0)))
+
+
+static func value_of(parts: Dictionary) -> int:
+	var total := 0
+	for part in parts:
+		total += part_value(part) * int(parts[part])
+	return total
 
 
 static func can_afford(parts: Dictionary, cost: Dictionary) -> bool:

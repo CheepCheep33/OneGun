@@ -34,3 +34,7 @@ is_default = false
 unlock_wave = 0
 gate_text = ""
 visual = {"slide_length": 1.55}
+legendary_name = "Stillwater"
+legendary_description = "Pierces one more robot, and every robot it passes through is slowed by 35% for 2 s."
+legendary_modifiers = Array[ExtResource("2_mod")]([])
+legendary_behaviours = {"pierce": 1, "slow_on_pierce": true}

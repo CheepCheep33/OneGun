@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="AttachmentDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/attachment_definition.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/weapons/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_1"]
+script = ExtResource("2_mod")
+stat = &"damage"
+flat = 0.0
+percent = -0.1
+
+[resource]
+script = ExtResource("1_def")
+id = &"cryo"
+display_name = "Cryo rounds"
+slot = &"ammo"
+description = "Hits slow robots by 40% for 2.5 s. Hitting a robot that has been slowed for a second shatters the frost: half the hit again to it and every robot within 2.5 m."
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1")])
+mark_scale = 0.15
+behaviours = {"on_hit": "cryo"}
+is_default = false
+unlock_wave = 0
+gate_text = ""
+unlock_flag = ""
+visual = {"slide_color": Color(0.25, 0.5, 0.7, 1)}
