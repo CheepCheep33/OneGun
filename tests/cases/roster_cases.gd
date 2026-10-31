@@ -1,7 +1,7 @@
 extends TestCase
 ## Milestone 4 roster and ammo checks in the running game: the heavy's armour and weak point, the
 ## shield bearer's shield against rays, rounds and blasts, Explosive splash, the Foreman's summons
-## and molten pools, and the dangerous combinations the plan names (Splitter plus chain arcs,
+## and molten pools, and the dangerous combinations the plan names (Splitter plus chain arcs and Shock arcs,
 ## Ricochet plus Penetrator).
 
 const HEAVY := "res://data/enemies/heavy.tres"
@@ -242,6 +242,15 @@ func _test_splitter_chain(game: Node) -> void:
 	check(counts[target] == rays and counts[left] == 1 and counts[right] == 1 and shot.chained.size() == 2,
 		"three crits on one enemy chain once to each neighbour and never twice (%d, %d, %d)" % [counts[target], counts[left], counts[right]])
 	check(shot.hits == rays, "chained hits are not direct hits and do not proc")
+	# The plan names Splitter plus Shock ammo: Shock's arcs share the shot's once-per-robot list.
+	for enemy in counts:
+		counts[enemy] = 0
+	var shock := _stats({"muzzle": Items.make(&"splitter"), "ammo": Items.make(&"shock")})
+	var shock_shot := _shot(game)
+	for i in rays:
+		_ray(game, _eye(game), target.center(), shock, shock_shot)
+	check(counts[target] == rays and counts[left] <= 1 and counts[right] <= 1 and counts[left] + counts[right] >= 1,
+		"three Shock rays on one enemy arc at most once into each neighbour (%d, %d, %d)" % [counts[target], counts[left], counts[right]])
 	_stop_counting(counts)
 	await _cleanup(game)
 
