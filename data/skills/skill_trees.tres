@@ -1,0 +1,408 @@
+[gd_resource type="Resource" script_class="SkillTreeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/skills/skill_tree_data.gd" id="1_data"]
+[ext_resource type="Script" path="res://scripts/skills/skill_definition.gd" id="2_skill"]
+[ext_resource type="Script" path="res://scripts/weapons/stat_modifier.gd" id="3_mod"]
+
+[sub_resource type="Resource" id="Mod_1"]
+script = ExtResource("3_mod")
+stat = &"recoil"
+flat = 0.0
+percent = -0.25
+
+[sub_resource type="Resource" id="Skill_1"]
+script = ExtResource("2_skill")
+id = &"steady_hands"
+tree = &"marksman"
+display_name = "Steady Hands"
+description = "25% less recoil."
+tier = 0
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_1")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_2"]
+script = ExtResource("3_mod")
+stat = &"crit_chance"
+flat = 0.05
+percent = 0.0
+
+[sub_resource type="Resource" id="Skill_2"]
+script = ExtResource("2_skill")
+id = &"deadeye"
+tree = &"marksman"
+display_name = "Deadeye"
+description = "5 points more crit chance."
+tier = 0
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_2")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_3"]
+script = ExtResource("3_mod")
+stat = &"crit_damage"
+flat = 0.0
+percent = 0.2
+
+[sub_resource type="Resource" id="Skill_3"]
+script = ExtResource("2_skill")
+id = &"keen_eye"
+tree = &"marksman"
+display_name = "Keen Eye"
+description = "20% more crit damage."
+tier = 1
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_3")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_4"]
+script = ExtResource("3_mod")
+stat = &"range"
+flat = 0.0
+percent = 0.2
+
+[sub_resource type="Resource" id="Skill_4"]
+script = ExtResource("2_skill")
+id = &"long_shot"
+tree = &"marksman"
+display_name = "Long Shot"
+description = "20% more range before damage falls off."
+tier = 1
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_4")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_5"]
+script = ExtResource("3_mod")
+stat = &"executioner"
+flat = 0.0
+percent = 0.4
+
+[sub_resource type="Resource" id="Skill_5"]
+script = ExtResource("2_skill")
+id = &"executioner"
+tree = &"marksman"
+display_name = "Executioner"
+description = "40% more damage to robots under a quarter of their health."
+tier = 2
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_5")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_6"]
+script = ExtResource("3_mod")
+stat = &"weak_point_damage"
+flat = 0.0
+percent = 0.3
+
+[sub_resource type="Resource" id="Skill_6"]
+script = ExtResource("2_skill")
+id = &"weak_spot"
+tree = &"marksman"
+display_name = "Weak Spot"
+description = "30% more weak-point damage."
+tier = 2
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_6")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_7"]
+script = ExtResource("3_mod")
+stat = &"extra_pierce"
+flat = 1.0
+percent = 0.0
+
+[sub_resource type="Resource" id="Skill_7"]
+script = ExtResource("2_skill")
+id = &"overpenetration"
+tree = &"marksman"
+display_name = "Overpenetration"
+description = "Every shot pierces one more robot, on any barrel."
+tier = 3
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_7")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_8"]
+script = ExtResource("3_mod")
+stat = &"damage"
+flat = 0.0
+percent = 0.1
+
+[sub_resource type="Resource" id="Skill_8"]
+script = ExtResource("2_skill")
+id = &"focus"
+tree = &"marksman"
+display_name = "Focus"
+description = "10% more damage."
+tier = 3
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_8")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_9"]
+script = ExtResource("3_mod")
+stat = &"bullet_time"
+flat = 1.0
+percent = 0.0
+
+[sub_resource type="Resource" id="Skill_9"]
+script = ExtResource("2_skill")
+id = &"bullet_time"
+tree = &"marksman"
+display_name = "Bullet Time"
+description = "Capstone. Reloading under 30% health slows time to 40% for two seconds, once per wave."
+tier = 4
+capstone = true
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_9")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_10"]
+script = ExtResource("3_mod")
+stat = &"fire_rate"
+flat = 0.0
+percent = 0.08
+
+[sub_resource type="Resource" id="Skill_10"]
+script = ExtResource("2_skill")
+id = &"rapid_cycle"
+tree = &"engineer"
+display_name = "Rapid Cycle"
+description = "8% more fire rate."
+tier = 0
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_10")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_11"]
+script = ExtResource("3_mod")
+stat = &"magazine"
+flat = 0.0
+percent = 0.15
+
+[sub_resource type="Resource" id="Skill_11"]
+script = ExtResource("2_skill")
+id = &"extended_feed"
+tree = &"engineer"
+display_name = "Extended Feed"
+description = "15% more rounds."
+tier = 0
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_11")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_12"]
+script = ExtResource("3_mod")
+stat = &"reload_speed"
+flat = 0.0
+percent = 0.15
+
+[sub_resource type="Resource" id="Skill_12"]
+script = ExtResource("2_skill")
+id = &"quick_hands"
+tree = &"engineer"
+display_name = "Quick Hands"
+description = "15% faster reloads."
+tier = 1
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_12")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_13"]
+script = ExtResource("3_mod")
+stat = &"status_duration"
+flat = 0.0
+percent = 0.4
+
+[sub_resource type="Resource" id="Skill_13"]
+script = ExtResource("2_skill")
+id = &"status_mastery"
+tree = &"engineer"
+display_name = "Status Mastery"
+description = "Burns, slows and stuns last 40% longer."
+tier = 1
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_13")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Skill_14"]
+script = ExtResource("2_skill")
+id = &"scavenger"
+tree = &"engineer"
+display_name = "Scavenger"
+description = "Robots drop loot 30% more often."
+tier = 2
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([])
+player_effects = {"loot_luck": 0.3}
+
+[sub_resource type="Resource" id="Skill_15"]
+script = ExtResource("2_skill")
+id = &"tinkerer"
+tree = &"engineer"
+display_name = "Tinkerer"
+description = "Crafting, rerolls, fuses and refines cost a quarter fewer parts (rounded, at least one)."
+tier = 2
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([])
+player_effects = {"craft_discount": 0.25}
+
+[sub_resource type="Resource" id="Mod_14"]
+script = ExtResource("3_mod")
+stat = &"hot_swap"
+flat = 1.0
+percent = 0.0
+
+[sub_resource type="Resource" id="Skill_16"]
+script = ExtResource("2_skill")
+id = &"hot_swap"
+tree = &"engineer"
+display_name = "Hot Swap"
+description = "A kill refills the magazine, at most once every 4 seconds."
+tier = 3
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_14")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_15"]
+script = ExtResource("3_mod")
+stat = &"chain_on_crit"
+flat = 0.0
+percent = 0.15
+
+[sub_resource type="Resource" id="Skill_17"]
+script = ExtResource("2_skill")
+id = &"shock_coil"
+tree = &"engineer"
+display_name = "Shock Coil"
+description = "Crits have a 15% chance to arc to a nearby robot."
+tier = 3
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_15")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Mod_16"]
+script = ExtResource("3_mod")
+stat = &"overclock"
+flat = 1.0
+percent = 0.0
+
+[sub_resource type="Resource" id="Skill_18"]
+script = ExtResource("2_skill")
+id = &"overclock"
+tree = &"engineer"
+display_name = "Overclock"
+description = "Capstone. Hold reload with a full magazine: five seconds of double fire rate (any surplus over the cap becomes damage), then the gun overheats for three."
+tier = 4
+capstone = true
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_16")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Skill_19"]
+script = ExtResource("2_skill")
+id = &"toughness"
+tree = &"survivor"
+display_name = "Toughness"
+description = "25 more health."
+tier = 0
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([])
+player_effects = {"max_health": 25.0}
+
+[sub_resource type="Resource" id="Skill_20"]
+script = ExtResource("2_skill")
+id = &"fleet_foot"
+tree = &"survivor"
+display_name = "Fleet Foot"
+description = "10% faster movement."
+tier = 0
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([])
+player_effects = {"move_speed": 0.1}
+
+[sub_resource type="Resource" id="Skill_21"]
+script = ExtResource("2_skill")
+id = &"second_wind"
+tree = &"survivor"
+display_name = "Second Wind"
+description = "Every kill heals 3 health."
+tier = 1
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([])
+player_effects = {"heal_per_kill": 3.0}
+
+[sub_resource type="Resource" id="Skill_22"]
+script = ExtResource("2_skill")
+id = &"plating"
+tree = &"survivor"
+display_name = "Plating"
+description = "Every hit you take is 3 lower (at least a quarter of it lands)."
+tier = 1
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([])
+player_effects = {"plating": 3.0}
+
+[sub_resource type="Resource" id="Skill_23"]
+script = ExtResource("2_skill")
+id = &"magnet"
+tree = &"survivor"
+display_name = "Magnet"
+description = "Loot is picked up from two and a half times as far."
+tier = 2
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([])
+player_effects = {"pickup_scale": 1.5}
+
+[sub_resource type="Resource" id="Skill_24"]
+script = ExtResource("2_skill")
+id = &"dash"
+tree = &"survivor"
+display_name = "Dash"
+description = "Double-tap a direction to dash a few metres. Two seconds to recharge."
+tier = 2
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([])
+player_effects = {"dash": 1.0}
+
+[sub_resource type="Resource" id="Mod_17"]
+script = ExtResource("3_mod")
+stat = &"low_health_damage"
+flat = 0.0
+percent = 0.2
+
+[sub_resource type="Resource" id="Skill_25"]
+script = ExtResource("2_skill")
+id = &"adrenaline"
+tree = &"survivor"
+display_name = "Adrenaline"
+description = "20% more damage while under half health."
+tier = 3
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([SubResource("Mod_17")])
+player_effects = {}
+
+[sub_resource type="Resource" id="Skill_26"]
+script = ExtResource("2_skill")
+id = &"bulwark"
+tree = &"survivor"
+display_name = "Bulwark"
+description = "25 more health."
+tier = 3
+capstone = false
+modifiers = Array[ExtResource("3_mod")]([])
+player_effects = {"max_health": 25.0}
+
+[sub_resource type="Resource" id="Skill_27"]
+script = ExtResource("2_skill")
+id = &"phoenix"
+tree = &"survivor"
+display_name = "Phoenix"
+description = "Capstone. Once per wave, a lethal hit leaves you at 1 health with two seconds of invulnerability."
+tier = 4
+capstone = true
+modifiers = Array[ExtResource("3_mod")]([])
+player_effects = {"phoenix": 1.0}
+
+[resource]
+script = ExtResource("1_data")
+nodes = Array[ExtResource("2_skill")]([SubResource("Skill_1"), SubResource("Skill_2"), SubResource("Skill_3"), SubResource("Skill_4"), SubResource("Skill_5"), SubResource("Skill_6"), SubResource("Skill_7"), SubResource("Skill_8"), SubResource("Skill_9"), SubResource("Skill_10"), SubResource("Skill_11"), SubResource("Skill_12"), SubResource("Skill_13"), SubResource("Skill_14"), SubResource("Skill_15"), SubResource("Skill_16"), SubResource("Skill_17"), SubResource("Skill_18"), SubResource("Skill_19"), SubResource("Skill_20"), SubResource("Skill_21"), SubResource("Skill_22"), SubResource("Skill_23"), SubResource("Skill_24"), SubResource("Skill_25"), SubResource("Skill_26"), SubResource("Skill_27")])

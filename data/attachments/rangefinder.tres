@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="AttachmentDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/attachment_definition.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/weapons/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_1"]
+script = ExtResource("2_mod")
+stat = &"fire_rate"
+flat = 0.0
+percent = -0.05
+
+[resource]
+script = ExtResource("1_def")
+id = &"rangefinder"
+display_name = "Rangefinder"
+slot = &"optic"
+description = "Damage grows with distance: 1.2% more per metre past 10 m, up to 40%."
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1")])
+mark_scale = 0.15
+behaviours = {"rangefinder": 0.012}
+is_default = false
+unlock_wave = 0
+gate_text = ""
+unlock_flag = ""
+visual = {"optic": "rangefinder"}
+legendary_name = "Far Sight"
+legendary_description = "Twice the distance bonus, up to 80% more damage at long range."
+legendary_modifiers = Array[ExtResource("2_mod")]([])
+legendary_behaviours = {"rangefinder": 0.024, "rangefinder_cap": 0.8}

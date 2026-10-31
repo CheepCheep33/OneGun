@@ -187,6 +187,104 @@ class Tour:
 		game.player.global_position = Vector3(yard._pad.global_position.x, game.player.global_position.y, yard._pad.global_position.z)
 		await _frames(6)
 		await _shot("14_scrapyard_extracted")
+
+		# Milestone 5: the skills tab with points to spend and a few nodes taken.
+		game.open_bench()
+		await _frames(2)
+		Progression.add_xp(6000)
+		Progression.take_skill(&"steady_hands")
+		Progression.take_skill(&"deadeye")
+		Progression.take_skill(&"toughness")
+		game.bench.open()
+		game.bench.show_tab("skills")
+		game.bench._show_skill_detail(&"deadeye")
+		await _frames(3)
+		await _shot("15_bench_skills")
+
+		# The craft tab's refine, fuse and transmute on an Epic with a Legendary.
+		var epic := Items.make(&"long_barrel", Items.Rarity.EPIC, [{"id": "sharp", "roll": 0.7}, {"id": "deep", "roll": 0.4}])
+		Progression.add_item(epic, "tour")
+		Progression.data["parts"]["legendary_cores"] = 1
+		Progression.add_credits(2000)
+		game.bench.open()
+		game.bench.show_tab("craft")
+		game.bench.select_item(int(epic["uid"]))
+		await _frames(3)
+		game.bench._tab_views["craft"].scroll_vertical = 10000 # down to the upgrade section
+		await _frames(2)
+		await _shot("16_bench_refine_fuse_transmute")
+		game.bench.show_tab("story")
+		Progression.fire_story("wave_5")
+		Progression.fire_story("log_scrapyard_1")
+		game.bench.refresh()
+		await _frames(3)
+		await _shot("17_bench_story_log")
+
+		# Wave 13's turrets, aiming, with the Scanner marking them.
+		for wave in range(1, 16):
+			Progression.record_wave_cleared(wave, 0, 30.0)
+		var scanner := {"optic": Items.make(&"scanner")}
+		game.start_wave(13)
+		await _frames(5)
+		game.wave_runner.stop()
+		game.wave_runner.clear_enemies()
+		game.player.pistol.apply_build(WeaponStats.build(Progression.PISTOL_BASE, Progression.core_levels(), scanner), scanner)
+		ahead = -game.player.global_basis.z
+		var turrets: Array = []
+		for spot in [[8.0, -3.0], [8.0, 3.0]]:
+			turrets.append(game.wave_runner.spawn_at(game.player.global_position + ahead * spot[0] + Vector3.RIGHT * spot[1],
+				load("res://data/enemies/turret.tres"), load("res://scenes/enemies/turret.tscn")))
+		await _seconds(Enemy.SPAWN_TIME + 0.2)
+		for turret in turrets:
+			turret._cooldown_left = 0.0
+		await _seconds(0.8)
+		await _shot("18_turrets_aiming_scanner")
+
+		# The Sentinel: its intro card, shield arcs and the sweep's warning line.
+		game.wave_runner.clear_enemies()
+		game.projectiles.clear_all()
+		game.player.health = 1.0e9
+		var sentinel: Sentinel = game.wave_runner.spawn_at(game.player.global_position + ahead * 9.0,
+			load("res://data/enemies/sentinel.tres"), load("res://scenes/enemies/sentinel.tscn"))
+		await _seconds(Enemy.SPAWN_TIME + 0.2)
+		sentinel.set_physics_process(false)
+		sentinel.sweep.start(game.player.global_position, sentinel.global_position)
+		for i in 30:
+			sentinel.sweep.tick(1.0 / 60.0, sentinel, game.player)
+		await _frames(2)
+		await _shot("19_sentinel_arcs_and_sweep")
+
+		# The Core Guardian venting: the core open between phases.
+		sentinel.set_physics_process(true)
+		game.wave_runner.clear_enemies()
+		game.hud.hide_story()
+		var guardian: CoreGuardian = game.wave_runner.spawn_at(game.player.global_position + ahead * 10.0,
+			load("res://data/enemies/core_guardian.tres"), load("res://scenes/enemies/core_guardian.tscn"))
+		await _seconds(Enemy.SPAWN_TIME + 0.2)
+		guardian._start_vent()
+		await _seconds(0.4)
+		await _shot("20_core_guardian_venting")
+		game.wave_runner.clear_enemies()
+		game.projectiles.clear_all()
+
+		# The Foundry with its heat strips, and the Signal Tower's pad between floors.
+		game.open_bench()
+		await _frames(2)
+		game.enter_area("foundry")
+		await _seconds(2.0)
+		var foundry: Node3D = game.arena
+		foundry.elapsed = 3.5 # the first strip molten, the second warning
+		await _frames(4)
+		await _shot("21_foundry_heat_strips")
+		game.open_bench()
+		await _frames(2)
+		game.enter_area("signal_tower")
+		await _seconds(2.0)
+		game.wave_runner.stop()
+		game.wave_runner.clear_enemies()
+		game.arena._set_pad(true)
+		await _frames(3)
+		await _shot("22_signal_tower_pad")
 		get_tree().quit(0)
 
 

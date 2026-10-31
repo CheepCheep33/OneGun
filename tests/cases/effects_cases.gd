@@ -11,7 +11,7 @@ func run_scene(game: Node) -> void:
 
 func _test_effect_pool(game: Node) -> void:
 	var pool: FxPool = game.get_node_or_null("FxPool")
-	var cap := FxPool.MAX_TRACERS + FxPool.MAX_IMPACTS + FxPool.MAX_NUMBERS + FxPool.MAX_LABELS + FxPool.MAX_BURSTS + FxPool.MAX_SOUNDS + FxPool.MAX_RINGS + FxPool.MAX_BLASTS
+	var cap := FxPool.MAX_TRACERS + FxPool.MAX_IMPACTS + FxPool.MAX_NUMBERS + FxPool.MAX_LABELS + FxPool.MAX_BURSTS + FxPool.MAX_SOUNDS + FxPool.MAX_RINGS + FxPool.MAX_BLASTS + FxPool.MAX_SHATTERS
 	check(pool != null and pool.warmed_up, "the effect pool exists and warmed its shaders up at the first bench")
 	check(pool.warmed_muzzle_light, "the warm-up drew the arena and its samples with the muzzle light on (lit shader variants)")
 	await seconds(1.0)

@@ -40,7 +40,7 @@ func run_scene(game: Node) -> void:
 
 func _test_wave_data() -> void:
 	var waves := WaveRunner.all_waves()
-	check(waves.size() == WaveRunner.WAVE_COUNT and WaveRunner.WAVE_COUNT == 15, "fifteen authored waves load (%d)" % waves.size())
+	check(waves.size() == WaveRunner.WAVE_COUNT and WaveRunner.WAVE_COUNT == 20, "twenty authored waves load (%d)" % waves.size())
 	var bosses := {}
 	for wave in waves:
 		for group in wave.groups:
@@ -48,23 +48,26 @@ func _test_wave_data() -> void:
 				bosses[wave.number] = String(group.definition.id)
 		if wave.is_boss_wave != bosses.has(wave.number):
 			bosses[wave.number] = "mismatch"
-	check(bosses == {5: "warden", 10: "foreman"}, "wave 5 is the Warden's boss wave and wave 10 the Foreman's (%s)" % str(bosses))
+	check(bosses == {5: "warden", 10: "foreman", 15: "sentinel", 20: "core_guardian"},
+		"bosses every five waves: Warden, Foreman, Sentinel, Core Guardian (%s)" % str(bosses))
 	var first_seen := {}
 	for wave in waves:
 		for group in wave.groups:
 			if group.definition and not first_seen.has(String(group.definition.id)):
 				first_seen[String(group.definition.id)] = wave.number
-	check(first_seen.get("shooter") == 4 and first_seen.get("swarm_drone") == 7 and first_seen.get("heavy") == 8 and first_seen.get("shield_bearer") == 11,
-		"shooters arrive in wave 4, swarm drones in 7, heavies in 8 and shield bearers in 11 (%s)" % str(first_seen))
+	check(first_seen.get("shooter") == 4 and first_seen.get("swarm_drone") == 7 and first_seen.get("heavy") == 8 and first_seen.get("shield_bearer") == 11
+		and first_seen.get("turret") == 13,
+		"shooters arrive in wave 4, swarm drones in 7, heavies in 8, shield bearers in 11 and turrets in 13 (%s)" % str(first_seen))
 	var scenes_match := true
 	for wave in waves:
 		for group in wave.groups:
 			var enemy: Node = group.enemy_scene.instantiate()
 			var definition: EnemyDefinition = group.definition
 			# Runners and heavies share the chaser scene, so match the kind of enemy rather than the id.
-			var fits := enemy is Enemy and (enemy is Shooter or enemy is Foreman) == definition.ranged \
-				and (enemy is SwarmDrone) == definition.flying and (enemy is Warden or enemy is Foreman) == definition.is_boss \
-				and (enemy is ShieldBearer) == (definition.id == &"shield_bearer")
+			var fits := enemy is Enemy and (enemy is Shooter or enemy is Foreman or enemy is Turret or enemy is CoreGuardian) == definition.ranged \
+				and (enemy is SwarmDrone) == definition.flying \
+				and (enemy is Warden or enemy is Foreman or enemy is Sentinel or enemy is CoreGuardian) == definition.is_boss \
+				and (enemy is ShieldBearer) == (definition.id == &"shield_bearer") and (enemy is Turret) == (definition.id == &"turret")
 			scenes_match = scenes_match and fits
 			enemy.free()
 	check(scenes_match, "every spawn group's scene matches the kind of its definition")
@@ -72,13 +75,17 @@ func _test_wave_data() -> void:
 	check(is_equal_approx(drone.counts_as, 0.5) and drone.flying and is_equal_approx(drone.loot_weight, 0.5), "drones count as half, fly and drop half as often")
 	var income := 0
 	var first_ten := 0
+	var fifteen := 0
 	for wave in waves:
 		income += roundi(wave.kill_income() * pow(Progression.TIER_STEP, Progression.tier_of_wave(wave.number))) \
 			+ wave.completion_bonus * (2 if wave.is_boss_wave else 1)
 		if wave.number == 10:
 			first_ten = income
+		if wave.number == 15:
+			fifteen = income
 	check(first_ten > 2000 and first_ten < 3500, "the first ten waves pay a first-run total in the planned band (%d credits)" % first_ten)
-	check(income > 5000 and income < 8500, "all fifteen waves pay a first-run total in the planned band (%d credits)" % income)
+	check(fifteen > 5000 and fifteen < 8500, "the first fifteen waves pay a first-run total in the planned band (%d credits)" % fifteen)
+	check(income > 12000 and income < 20000, "all twenty waves pay a first-run total in the planned band (%d credits)" % income)
 
 
 ## The shooter's aim error grows with distance (plan: worse accuracy the further away).
@@ -138,7 +145,7 @@ func _clear_build(game: Node) -> void:
 func _test_fire_modes(game: Node) -> void:
 	var pistol: Pistol = game.player.pistol
 	# Burst: one pull fires three rounds a few frames apart, then pauses to hold the sustained rate.
-	Progression.record_wave_cleared(10, 0, 1.0) # Burst's gate (temporary stand-in for the Foundry).
+	Progression.add_unlock("foundry") # Burst's gate: the Foundry's first clear
 	_equip_fresh(game, &"burst")
 	check(pistol.stats.fire_mode() == "burst" and pistol.ammo == pistol.stats.magazine_size, "burst receiver is fitted")
 	pistol.request_fire()

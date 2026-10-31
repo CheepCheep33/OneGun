@@ -13,7 +13,11 @@ const PROFILES := {
 	"shell": {"speed": 36.0, "gravity": 0.35, "radius": 0.12, "lifetime": 3.0, "bounces": 0},
 	"ricochet": {"speed": 60.0, "gravity": 0.0, "radius": 0.06, "lifetime": 3.0, "bounces": 2},
 	"charge": {"speed": 90.0, "gravity": 0.0, "radius": 0.1, "lifetime": 3.0, "bounces": 0},
+	"grenade": {"speed": 24.0, "gravity": 1.0, "radius": 0.14, "lifetime": 3.0, "bounces": 0},
+	# The turret's heavy bolt: listed so the warm-up builds its capsule (radius is all it uses).
+	"heavy_bolt": {"speed": 30.0, "gravity": 0.0, "radius": 0.24, "lifetime": 4.0, "bounces": 0},
 }
+const GRENADE_COLOR := Color(0.55, 1.0, 0.35)
 const WORLD_LAYER := 1
 const PLAYER_LAYER := 2
 const ENEMY_LAYER := 4
@@ -61,6 +65,10 @@ class Projectile:
 	var enemy_hits := 0
 	var bounce_count := 0
 	var travelled := 0.0
+	## Above zero for a Launcher grenade: it bursts on whatever it touches for this much to every
+	## robot within grenade_radius (no crit, no proc, never the gun's ammo).
+	var grenade_damage := 0.0
+	var grenade_radius := 0.0
 	var mesh: MeshInstance3D
 	var material: StandardMaterial3D
 
@@ -94,6 +102,7 @@ func fire_enemy_bolt(shooter: Node3D, origin: Vector3, velocity: Vector3, damage
 	projectile.pierce_left = 0
 	projectile.bounces_left = 0
 	projectile.gravity_scale = 0.0
+	projectile.grenade_damage = 0.0
 	_launch(projectile, origin, velocity, lifetime, radius, color)
 	return projectile
 
@@ -116,8 +125,33 @@ func fire_player_round(shooter_rid: RID, origin: Vector3, direction: Vector3, st
 		bounces = int(profile.get("bounces", 0))
 	projectile.bounces_left = clampi(bounces, 0, WeaponStats.BOUNCE_CAP)
 	projectile.gravity_scale = float(profile.get("gravity", 0.0))
+	projectile.grenade_damage = 0.0
 	_launch(projectile, origin, direction.normalized() * float(profile.get("speed", 30.0)),
 		float(profile.get("lifetime", 4.0)), float(profile.get("radius", 0.1)), color)
+	return projectile
+
+
+## Fires a Launcher grenade (plan: alt-fire uses the projectile pool, ignores the gun's ammo and
+## cannot proc): it arcs, then bursts on the first robot, wall or floor it meets.
+func fire_grenade(shooter_rid: RID, origin: Vector3, direction: Vector3, damage: float, radius: float,
+		scene: Node) -> Projectile:
+	var profile: Dictionary = PROFILES["grenade"]
+	var projectile := _acquire()
+	projectile.team = Team.PLAYER
+	projectile.mask = WORLD_LAYER | ENEMY_LAYER | SHIELD_LAYER
+	var excluded: Array[RID] = [shooter_rid]
+	projectile.exclude = excluded
+	projectile.damage = 0.0
+	projectile.stats = null
+	projectile.shot = ShotPipeline.ShotState.new()
+	projectile.shot.scene = scene
+	projectile.pierce_left = 0
+	projectile.bounces_left = 0
+	projectile.gravity_scale = float(profile["gravity"])
+	projectile.grenade_damage = damage
+	projectile.grenade_radius = radius
+	_launch(projectile, origin, direction.normalized() * float(profile["speed"]), float(profile["lifetime"]),
+		float(profile["radius"]), GRENADE_COLOR)
 	return projectile
 
 
@@ -163,7 +197,10 @@ func _physics_process(delta: float) -> void:
 func _step(p: Projectile, delta: float) -> void:
 	p.age += delta
 	if p.age > p.lifetime:
-		_retire(p)
+		if p.grenade_damage > 0.0:
+			_explode_grenade(p, p.global_position)
+		else:
+			_retire(p)
 		return
 	if p.gravity_scale > 0.0:
 		p.velocity.y -= _gravity * p.gravity_scale * delta
@@ -185,13 +222,16 @@ func _step(p: Projectile, delta: float) -> void:
 		remaining *= 1.0 - clampf(used, 0.0, 1.0)
 		p.travelled += from.distance_to(hit.position)
 		var collider: Object = hit.collider
+		if p.grenade_damage > 0.0:
+			_explode_grenade(p, hit.position + hit.normal * 0.1)
+			return
 		if p.team == Team.ENEMY and collider is Player:
-			collider.take_damage(p.damage)
+			collider.take_damage(p.damage, from - p.velocity.normalized())
 			Fx.impact(self, hit.position, hit.normal)
 			_retire(p)
 			return
 		if p.team == Team.PLAYER and collider is Node and collider.has_method("take_hit"):
-			var context := WeaponStats.ShotContext.new()
+			var context := ShotPipeline.context_for(p.shot)
 			context.distance = p.travelled
 			context.pierce_index = p.enemy_hits
 			context.bounce_index = p.bounce_count
@@ -232,6 +272,18 @@ func _bounce(p: Projectile, hit: Dictionary) -> void:
 		var kept: Array[RID] = [p.exclude[0]]
 		p.exclude = kept
 	Fx.impact(self, hit.position, normal)
+
+
+func _explode_grenade(p: Projectile, at: Vector3) -> void:
+	var scene: Node = p.shot.scene if p.shot != null and is_instance_valid(p.shot.scene) else self
+	Fx.blast(self, at, p.grenade_radius)
+	Fx.impact(self, at, Vector3.UP)
+	for result in ShotPipeline.area_damage(self, at, p.grenade_radius, p.grenade_damage, p.shot):
+		if scene.has_signal("hit_landed"):
+			scene.hit_landed.emit(result.killed)
+		if Settings.show_damage_numbers and result.damage > 0.0:
+			Fx.damage_number(self, result.position, result.damage, result.killed)
+	_retire(p)
 
 
 func _report_player_hit(p: Projectile, result: ShotPipeline.HitResult) -> void:

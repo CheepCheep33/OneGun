@@ -4,7 +4,7 @@ extends TestCase
 ## tier scaling, and a random sample of full builds that must all stay finite and inside the caps
 ## (plan: stats sample test).
 
-const SAMPLE_BUILDS := 2000
+const SAMPLE_BUILDS := 10000
 
 
 func run_unit() -> void:
@@ -22,20 +22,29 @@ func run_unit() -> void:
 
 func _test_catalogue() -> void:
 	var bases := Items.all_attachments()
-	check(bases.size() == Items.BASE_IDS.size() and bases.size() == 15, "fifteen authored bases load (%d)" % bases.size())
-	for slot in [&"receiver", &"barrel", &"muzzle", &"magazine", &"ammo"]:
+	check(bases.size() == Items.BASE_IDS.size() and bases.size() == 33, "thirty-three authored bases load (%d)" % bases.size())
+	var expected := {&"receiver": 4, &"barrel": 4, &"muzzle": 4, &"magazine": 5, &"ammo": 7, &"optic": 4, &"underbarrel": 5}
+	for slot in expected:
 		var default := Items.default_for_slot(slot)
 		check(default != null and default.is_default and default.modifiers.is_empty(), "%s has a default base with no modifiers" % slot)
-		check(Items.bases_for_slot(slot).size() == 3 and Items.slot_has_bases(slot), "%s has two non-default bases" % slot)
-	check(not Items.slot_has_bases(&"optic") and not Items.slot_has_bases(&"underbarrel"), "slots without shipped bases report none")
-	check(Items.drop_affixes().size() == 10 and Items.all_affixes().size() == 11, "ten of eleven affixes are in the drop pool (%d / %d)" % [Items.drop_affixes().size(), Items.all_affixes().size()])
+		check(Items.bases_for_slot(slot).size() == int(expected[slot]) and Items.slot_has_bases(slot),
+			"%s has %d non-default bases (%d)" % [slot, int(expected[slot]) - 1, Items.bases_for_slot(slot).size() - 1])
+	check(not Items.slot_has_bases(&"relic"), "the relic slot has no bases yet (Milestone 8)")
+	check(Items.drop_affixes().size() == 11 and Items.all_affixes().size() == 11, "all eleven affixes are in the drop pool (%d / %d)" % [Items.drop_affixes().size(), Items.all_affixes().size()])
 	var dropping := []
 	for affix in Items.drop_affixes():
 		dropping.append(String(affix.id))
-	check(not dropping.has("lingering") and dropping.has("precise"), "the status affix waits for statuses; weak-point damage drops now that heavies have a core")
+	check(dropping.has("lingering") and dropping.has("precise"), "the status affix drops now that statuses exist")
+	check(Items.legendary_bases().size() == 6, "six bases carry a Legendary (%d)" % Items.legendary_bases().size())
+	var legendary_slots := {}
+	for base in Items.legendary_bases():
+		legendary_slots[String(base.slot)] = true
+	check(legendary_slots.size() == 6 and not legendary_slots.has("relic"), "the six Legendaries sit in six different slots, none the relic (%s)" % str(legendary_slots.keys()))
 	check(Items.get_attachment(&"explosive_rounds").behaviours.get("projectile") == "shell" and Items.get_attachment(&"ricochet_rounds").behaviours.get("projectile") == "ricochet",
 		"Explosive and Ricochet rounds fire on the shared projectile system")
-	check(Items.get_attachment(&"automatic").unlock_wave == 5 and Items.get_attachment(&"burst").unlock_wave == 10, "receiver bases carry their gate waves")
+	check(Items.get_attachment(&"automatic").unlock_wave == 5 and Items.get_attachment(&"burst").unlock_flag == "foundry"
+		and Items.get_attachment(&"charge").unlock_flag == "signal_tower" and Items.get_attachment(&"overflow").unlock_flag == "signal_tower_top",
+		"gated bases carry their gates: Automatic the Warden, Burst the Foundry, Charge the Signal Tower, Overflow its top")
 
 
 func _test_mark_scaling() -> void:
@@ -144,26 +153,77 @@ func _test_tier_scaling() -> void:
 	check(tier_one.tier == 1, "the build remembers its tier")
 
 
+## The boundary sweep (plan: Milestone 5 verification): every base at every mark, as an Epic and,
+## where it has one, as its Legendary, with every affix at its lowest and highest roll, against no
+## core levels and maxed ones, no skills and every skill, at Reforge tiers 0 and 3; each build is
+## then fired in the extreme shot contexts (point blank and far past falloff, full and empty
+## charge, full and nearly dead player, armoured target at 1% health, forced crit).
 func _test_every_base_every_mark() -> void:
 	var base: WeaponBaseStats = Progression.PISTOL_BASE
 	var ok := true
 	var count := 0
-	var max_affixes := []
-	for affix in Items.drop_affixes():
-		max_affixes.append({"id": String(affix.id), "roll": 1.0})
+	var all_skills := {}
+	for node in Skills.all():
+		all_skills[String(node.id)] = 1
+	var maxed := {}
+	for tuning in CoreTuning.all():
+		maxed[String(tuning.id)] = 60
+	var affix_sets := []
+	for roll in [0.0, 1.0]:
+		var rolled := []
+		for affix in Items.drop_affixes():
+			rolled.append({"id": String(affix.id), "roll": roll})
+		affix_sets.append(rolled)
+	var contexts := _extreme_contexts()
+	var generator := TestCase.rng(15)
 	for definition in Items.all_attachments():
 		for mark in range(Items.MIN_MARK, Items.MAX_MARK + 1):
-			var item := Items.make(definition.id, Items.Rarity.LEGENDARY, max_affixes.slice(0, 3), mark)
-			var stats := WeaponStats.build(base, {"damage": 20, "fire_rate": 20, "magazine": 20, "reload": 20}, {String(definition.slot): item})
-			ok = ok and _within_limits(stats, base)
-			count += 1
-	check(ok and count == Items.BASE_IDS.size() * 5, "every base at every mark with maximum affix rolls stays finite and inside the caps (%d builds)" % count)
+			for rarity in ([Items.Rarity.EPIC, Items.Rarity.LEGENDARY] if definition.has_legendary() else [Items.Rarity.EPIC]):
+				for rolled in affix_sets:
+					for levels in [{}, maxed]:
+						for skills in [{}, all_skills]:
+							for tier in [0, 3]:
+								var item := Items.make(definition.id, rarity, rolled.slice(0, 3), mark)
+								var stats := WeaponStats.build(base, levels, {String(definition.slot): item}, skills, {}, tier)
+								ok = ok and _within_limits(stats, base)
+								for context in contexts:
+									var shot := WeaponStats.resolve_shot(stats, context, generator)
+									ok = ok and is_finite(shot.damage) and shot.damage >= 0.0
+								ok = ok and is_finite(stats.sustained_dps()) and stats.sustained_dps() >= 0.0
+								ok = ok and is_finite(WeaponStats.blast_damage(stats, 30.0, 1.0)) and stats.rounds_per_magazine() >= 1.0
+								count += 1
+	check(ok and count > Items.BASE_IDS.size() * 5 * 16, "boundary sweep: every base, mark, rarity, affix extreme, core, skill and tier corner stays finite and inside the caps (%d builds)" % count)
 
 
+func _extreme_contexts() -> Array[WeaponStats.ShotContext]:
+	var contexts: Array[WeaponStats.ShotContext] = []
+	for distance in [0.0, 400.0]:
+		for charge in [0.0, 1.0]:
+			for health in [1.0, 0.01]:
+				var context := WeaponStats.ShotContext.new()
+				context.distance = distance
+				context.charge = charge
+				context.player_health_fraction = health
+				context.target_health_fraction = 0.01
+				context.target_armored = true
+				context.force_crit = health < 0.5
+				context.overclock_active = charge > 0.5
+				context.pierce_index = 5
+				context.bounce_index = 3
+				contexts.append(context)
+	return contexts
+
+
+## 10,000 sampled builds (plan: Milestone 5 verification): random core levels, a random base in
+## every slot at a random rarity, mark and affix rolls, a random set of real skill nodes and a
+## Reforge tier, each fired once in a random context.
 func _test_sampled_builds() -> void:
 	var base: WeaponBaseStats = Progression.PISTOL_BASE
 	var generator := TestCase.rng(2026)
 	var affixes := Items.drop_affixes()
+	var skill_ids := []
+	for node in Skills.all():
+		skill_ids.append(String(node.id))
 	var ok := true
 	var worst_fire_rate := 0.0
 	for i in SAMPLE_BUILDS:
@@ -171,7 +231,7 @@ func _test_sampled_builds() -> void:
 		for tuning in CoreTuning.all():
 			levels[String(tuning.id)] = generator.randi_range(0, 60)
 		var equipped := {}
-		for slot in [&"receiver", &"barrel", &"muzzle", &"magazine", &"ammo"]:
+		for slot in [&"receiver", &"barrel", &"muzzle", &"magazine", &"ammo", &"optic", &"underbarrel"]:
 			if generator.randf() < 0.8:
 				var choices := Items.bases_for_slot(slot)
 				var definition: AttachmentDefinition = choices[generator.randi_range(0, choices.size() - 1)]
@@ -183,13 +243,22 @@ func _test_sampled_builds() -> void:
 					rolled.append({"id": String(pool[index].id), "roll": generator.randf()})
 					pool.remove_at(index)
 				equipped[String(slot)] = Items.make(definition.id, rarity, rolled, generator.randi_range(1, 5))
-		var skills := {"modifiers": [StatModifier.make(&"damage", 0.0, generator.randf() * 0.5), StatModifier.make(&"crit_chance", 0.0, generator.randf() * 0.4)]}
+		var skills := {}
+		for id in skill_ids:
+			if generator.randf() < 0.4:
+				skills[id] = 1
 		var stats := WeaponStats.build(base, levels, equipped, skills, {}, generator.randi_range(0, 3))
 		ok = ok and _within_limits(stats, base)
 		worst_fire_rate = maxf(worst_fire_rate, stats.fire_rate)
-		var shot := WeaponStats.resolve_shot(stats, WeaponStats.ShotContext.new(), generator)
-		ok = ok and is_finite(shot.damage) and shot.damage >= 0.0
-	check(ok, "%d random full builds stay finite and inside the caps" % SAMPLE_BUILDS)
+		var context := WeaponStats.ShotContext.new()
+		context.distance = generator.randf() * 120.0
+		context.charge = generator.randf()
+		context.player_health_fraction = generator.randf()
+		context.target_health_fraction = generator.randf()
+		context.target_armored = generator.randf() < 0.5
+		var shot := WeaponStats.resolve_shot(stats, context, generator)
+		ok = ok and is_finite(shot.damage) and shot.damage >= 0.0 and is_finite(stats.sustained_dps())
+	check(ok, "%d random full builds (seven slots, skills, tiers) stay finite and inside the caps" % SAMPLE_BUILDS)
 	check(worst_fire_rate <= WeaponStats.ABSOLUTE_FIRE_RATE_CAP, "no sampled build beats the fire-rate cap (%.2f)" % worst_fire_rate)
 
 

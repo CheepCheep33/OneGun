@@ -28,6 +28,11 @@ class Driver:
 		preload("res://tests/cases/crafting_cases.gd"),
 		preload("res://tests/cases/roster_cases.gd"),
 		preload("res://tests/cases/scrapyard_cases.gd"),
+		preload("res://tests/cases/skills_cases.gd"),
+		preload("res://tests/cases/upgrade_cases.gd"),
+		preload("res://tests/cases/arsenal_cases.gd"),
+		preload("res://tests/cases/boss_cases.gd"),
+		preload("res://tests/cases/areas_cases.gd"),
 		preload("res://tests/cases/effects_cases.gd"),
 		preload("res://tests/cases/perf_cases.gd"),
 	]

@@ -9,7 +9,7 @@ extends RefCounted
 const PATH := "user://save.json"
 const BACKUP_PATH := "user://save.backup.json"
 const PROBE_PATH := "user://.storage_probe"
-const VERSION := 4
+const VERSION := 5
 
 ## True when the storage probe failed: saves are kept in memory only.
 static var in_memory := false
@@ -17,7 +17,7 @@ static var storage_warning := ""
 static var _memory_copy: Dictionary = {}
 
 
-## The empty version-4 save a new player starts from.
+## The empty version-5 save a new player starts from.
 static func fresh() -> Dictionary:
 	var parts := {}
 	for part in Items.PART_IDS:
@@ -32,17 +32,32 @@ static func fresh() -> Dictionary:
 		"equipped": {},
 		"parts": parts,
 		"skills": {},
+		## Experience earned (levels and skill points come from it) and the bosses whose first kill
+		## paid a bonus skill point.
+		"xp": 0,
+		"boss_kills": [],
+		## Side-area unlocks that open bases: "foundry", "signal_tower", "signal_tower_top".
+		"unlocks": [],
 		"story_flags": [],
+		## Story lines waiting to be read at the bench, oldest first (story trigger ids).
+		"story_queue": [],
 		"tier": 0,
 		"seed": randi(),
 		## The loot stream's RandomNumberGenerator state, as a string: JSON numbers are doubles and
 		## would mangle a 64-bit state. Empty means "not started: seed it from `seed`".
 		"loot_state": "",
 		"range": {"best_time": 0.0, "par_rewarded": false, "chosen_slot": "barrel"},
-		"areas": {"scrapyard": {"runs": 0, "extractions": 0, "best_cores": 0}},
+		"areas": {
+			"scrapyard": {"runs": 0, "extractions": 0, "best_cores": 0},
+			## `spent` is 1 after an attempt until a main wave is played (one attempt per intermission).
+			"foundry": {"runs": 0, "clears": 0, "perfect": 0, "spent": 0},
+			## `core_tier` is one more than the Reforge tier whose Legendary core the top floor paid.
+			"signal_tower": {"runs": 0, "best_floor": 0, "clears": 0, "core_tier": 0},
+		},
 		"records": {
 			"kills": 0, "credits_earned": 0, "deaths": 0, "waves_cleared": 0,
 			"drops": 0, "pickups": 0, "dismantled": 0, "crafted": 0, "rerolled": 0,
+			"refined": 0, "fused": 0, "transmuted": 0,
 		},
 	}
 
@@ -90,11 +105,37 @@ static func migrate(data: Dictionary) -> Dictionary:
 		return fresh()
 	if version == 1:
 		data = _migrate_1_to_2(data)
+	if version < 5:
+		data = _migrate_to_5(data)
 	# Version 2 (Milestone 2) lacks parts, the overflow tray, the loot stream and the range
 	# record; version 3 (Milestone 3) lacks the side-area records, the crafting records and the
-	# items' reroll counts. sanitize() fills every missing field from fresh(), so 2 -> 3 -> 4 needs
-	# no special step.
+	# items' reroll counts; version 4 (Milestone 4) lacks experience, skills, unlocks and the new
+	# areas. sanitize() fills every missing field from fresh(), so those need no special step.
 	return sanitize(data)
+
+
+## Before version 5 the Burst receiver opened with the wave 10 clear; from Milestone 5 the
+## Foundry's first clear opens it. A player who had it keeps it. Experience starts at the
+## credits already earned, so a returning player has the levels a fresh one would by now.
+static func _migrate_to_5(old: Dictionary) -> Dictionary:
+	var cleared_10 := false
+	var waves: Variant = old.get("waves", {})
+	if waves is Dictionary and waves.get("first_clears", []) is Array:
+		for wave in waves["first_clears"]:
+			cleared_10 = cleared_10 or ((wave is int or wave is float) and int(wave) == 10)
+	if cleared_10:
+		var unlocks: Array = old.get("unlocks", []) if old.get("unlocks", []) is Array else []
+		if not unlocks.has("foundry"):
+			unlocks.append("foundry")
+		old["unlocks"] = unlocks
+	# The Milestone 4 Scrapyard log flag is the story's first salvage log.
+	var flags: Variant = old.get("story_flags", [])
+	if flags is Array and flags.has("scrapyard_log_1"):
+		flags[flags.find("scrapyard_log_1")] = "log_scrapyard_1"
+	var records: Variant = old.get("records", {})
+	if records is Dictionary and not old.has("xp"):
+		old["xp"] = maxi(int(records.get("credits_earned", 0)), 0)
+	return old
 
 
 ## Version 1 was the original Milestone 2 spec: credits, upgrade levels and the highest wave.
@@ -152,10 +193,17 @@ static func sanitize(data: Dictionary) -> Dictionary:
 	var skills: Variant = data.get("skills", {})
 	if skills is Dictionary:
 		for key in skills:
-			clean["skills"][String(key)] = int(skills[key])
-	for flag in data.get("story_flags", []):
-		if flag is String:
-			clean["story_flags"].append(flag)
+			if Skills.get_definition(StringName(String(key))) != null and (skills[key] is int or skills[key] is float):
+				clean["skills"][String(key)] = clampi(int(skills[key]), 0, 1)
+			else:
+				push_warning("Dropping unknown skill '%s' from the save." % str(key))
+	clean["xp"] = maxi(int(data.get("xp", 0)), 0) if (data.get("xp", 0) is int or data.get("xp", 0) is float) else 0
+	for list_name in ["boss_kills", "unlocks", "story_flags", "story_queue"]:
+		var saved: Variant = data.get(list_name, [])
+		if saved is Array:
+			for entry in saved:
+				if entry is String and not clean[list_name].has(entry):
+					clean[list_name].append(entry)
 	var range_data: Variant = data.get("range", {})
 	if range_data is Dictionary:
 		clean["range"]["best_time"] = maxf(float(range_data.get("best_time", 0.0)), 0.0)

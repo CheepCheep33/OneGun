@@ -26,6 +26,28 @@ const STAT_KEYS: Array[StringName] = [
 const EXTRA_PIERCE_KEY := "extra_pierce"
 const AMMO_REFUND_KEY := "ammo_refund_on_kill"
 const CHAIN_ON_CRIT_KEY := "chain_on_crit"
+## Overflow magazine: the chance a shot costs no round.
+const FREE_SHOT_KEY := "free_shot_chance"
+## Lingering affix and Status Mastery: status effects last this much longer.
+const STATUS_DURATION_KEY := "status_duration"
+## Skills that read the shot's context: Executioner (more damage to a robot under
+## EXECUTE_THRESHOLD of its health) and Adrenaline (more damage while the player is under
+## LOW_HEALTH_THRESHOLD).
+const EXECUTIONER_KEY := "executioner"
+const EXECUTE_THRESHOLD := 0.25
+const LOW_HEALTH_KEY := "low_health_damage"
+const LOW_HEALTH_THRESHOLD := 0.5
+## Hollow point: more against light robots, less against armoured ones (any armour above zero).
+const HOLLOW_LIGHT_BONUS := 0.35
+const HOLLOW_ARMOURED_PENALTY := 0.4
+## Rangefinder: damage grows by its `rangefinder` value per metre past this distance, up to its
+## cap (`rangefinder_cap`, RANGEFINDER_CAP by default).
+const RANGEFINDER_START := 10.0
+const RANGEFINDER_CAP := 0.4
+## A full charge (Charge receiver) multiplies the shot by one plus this.
+const CHARGE_BONUS := 2.0
+## A full charge widens an explosive round's blast by this share.
+const CHARGE_BLAST_GROWTH := 1.0
 
 ## Hard caps that no combination of sources may exceed (plan: interaction rules, Caps).
 const ABSOLUTE_FIRE_RATE_CAP := 15.0
@@ -68,7 +90,8 @@ const DEFAULT_BEHAVIOURS := {
 	"bounces": 0,
 	"projectile": "hitscan", # hitscan or a projectile profile id (see ProjectilePool.PROFILES)
 	"blast_radius": 0.0, # metres; above zero the round bursts where it stops (Explosive rounds)
-	"on_hit": "", # status effect id applied by the ammo (statuses arrive with Milestone 5)
+	"on_hit": "", # status effect applied by the ammo: burn, cryo or shock (see StatusEffects)
+	"charge_time": 0.0, # seconds to a full charge (Charge receiver)
 }
 
 var damage: float
@@ -100,6 +123,12 @@ class ShotContext:
 	var player_health_fraction := 1.0
 	var overclock_active := false
 	var bullet_time_active := false
+	## The enemy's health before this hit, as a fraction (Executioner).
+	var target_health_fraction := 1.0
+	## True when the enemy has armour (Hollow point).
+	var target_armored := false
+	## The hit is a critical hit whatever the roll (Triplet: a burst's last round).
+	var force_crit := false
 	## 0 for the first enemy a ray hits, 1 for the first pierced enemy, and so on.
 	var pierce_index := 0
 	## How many times the round bounced off world geometry before this hit.
@@ -126,12 +155,27 @@ static func build(base: WeaponBaseStats, core_levels: Dictionary = {}, equipped:
 		percents[key] = percents.get(key, 0.0) + modifier.percent
 	# Behaviours merge in slot order (receiver, barrel, muzzle, ...) so "later entries win" is
 	# deterministic whatever order the equipped dictionary was saved in.
+	# Spread composes across slots: the muzzle's cone (spread_degrees), plus each base's
+	# added_spread (Short barrel), times each base's spread_scale (Compensator).
+	var added_spread := 0.0
+	var spread_scale := 1.0
 	for slot_id in Items.SLOT_IDS:
 		var item: Variant = equipped.get(String(slot_id))
 		if item is Dictionary:
 			var definition := Items.get_attachment(item.get("base", ""))
 			if definition:
 				behaviours.merge(definition.behaviours, true)
+				if Items.is_legendary(item):
+					behaviours.merge(definition.legendary_behaviours, true)
+				added_spread += float(definition.behaviours.get("added_spread", 0.0))
+				spread_scale *= float(definition.behaviours.get("spread_scale", 1.0))
+	behaviours.erase("added_spread")
+	behaviours.erase("spread_scale")
+	behaviours["spread_degrees"] = (float(behaviours.get("spread_degrees", 0.0)) + added_spread) * spread_scale
+	# Charge plus a projectile ammo makes one round on the Charge profile with the ammo's on-hit
+	# and blast (plan: hitscan or projectile); the Charge receiver's own shot is simulated too.
+	if behaviours.get("fire_mode", "semi") == "charge":
+		behaviours["projectile"] = "charge"
 
 	var stats := WeaponStats.new()
 	stats.tier = reforge_tier
@@ -171,9 +215,9 @@ static func build(base: WeaponBaseStats, core_levels: Dictionary = {}, equipped:
 	return stats
 
 
-## Every numeric modifier from every source, in resolution order. Skills and Forge nodes are
-## passed as {id: level}; their definitions arrive in later milestones, so for now they contribute
-## only when given as inline StatModifier arrays under the key "modifiers".
+## Every numeric modifier from every source, in resolution order. Skills are passed as {id: rank}
+## and resolve through Skills (data/skills/); Forge nodes arrive with Milestone 7. Either may also
+## carry inline StatModifier arrays under the key "modifiers" (tests and the Reforge simulation).
 static func collect_modifiers(core_levels: Dictionary, equipped: Dictionary, skills: Dictionary,
 		forge: Dictionary, reforge_tier := 0) -> Array[StatModifier]:
 	var result: Array[StatModifier] = []
@@ -190,6 +234,11 @@ static func collect_modifiers(core_levels: Dictionary, equipped: Dictionary, ski
 		for modifier in source.get("modifiers", []):
 			if modifier is StatModifier:
 				result.append(modifier)
+	for id in skills:
+		if String(id) != "modifiers" and int(skills[id]) > 0:
+			var skill := Skills.get_definition(StringName(String(id)))
+			if skill:
+				result.append_array(skill.modifiers)
 	return result
 
 
@@ -202,7 +251,8 @@ static func resolve_shot(stats: WeaponStats, context: ShotContext, rng: RandomNu
 	if stats.blast_radius() > 0.0:
 		damage *= EXPLOSIVE_DIRECT_SHARE
 	if stats.behaviours.get("fire_mode", "semi") == "charge":
-		damage *= 1.0 + 2.0 * clampf(context.charge, 0.0, 1.0)
+		damage *= 1.0 + CHARGE_BONUS * clampf(context.charge, 0.0, 1.0)
+	damage *= context_multiplier(stats, context)
 	if context.overclock_active:
 		# Overclock's fire-rate surplus above the cap becomes damage at the same ratio (plan: Caps).
 		var wanted := stats.fire_rate * 2.0
@@ -210,11 +260,30 @@ static func resolve_shot(stats: WeaponStats, context: ShotContext, rng: RandomNu
 		damage *= wanted / maxf(cap, 0.1)
 	damage *= pow(PIERCE_FALLOFF, maxi(context.pierce_index, 0))
 	damage *= pow(BOUNCE_FALLOFF, maxi(context.bounce_index, 0))
-	shot.is_crit = stats.crit_chance > 0.0 and rng.randf() < stats.crit_chance
+	shot.is_crit = context.force_crit or (stats.crit_chance > 0.0 and rng.randf() < stats.crit_chance)
 	if shot.is_crit:
 		damage *= stats.crit_multiplier
 	shot.damage = maxf(damage, 0.0)
 	return shot
+
+
+## Everything the shot's context adds on top of the build's numbers, before crits: the
+## Rangefinder's distance bonus, Hollow point against light or armoured robots, Executioner on a
+## robot near death and Adrenaline while the player is hurt. Previews call it with their own
+## context, so the bench shows the Rangefinder at 10, 25 and 40 m.
+static func context_multiplier(stats: WeaponStats, context: ShotContext) -> float:
+	var multiplier := 1.0
+	var per_metre := float(stats.behaviours.get("rangefinder", 0.0))
+	if per_metre > 0.0:
+		var cap := float(stats.behaviours.get("rangefinder_cap", RANGEFINDER_CAP))
+		multiplier *= 1.0 + minf(maxf(context.distance - RANGEFINDER_START, 0.0) * per_metre, cap)
+	if bool(stats.behaviours.get("hollow_point", false)):
+		multiplier *= (1.0 - HOLLOW_ARMOURED_PENALTY) if context.target_armored else (1.0 + HOLLOW_LIGHT_BONUS)
+	if context.target_health_fraction <= EXECUTE_THRESHOLD:
+		multiplier *= 1.0 + stats.extra_percent(EXECUTIONER_KEY)
+	if context.player_health_fraction <= LOW_HEALTH_THRESHOLD:
+		multiplier *= 1.0 + stats.extra_percent(LOW_HEALTH_KEY)
+	return multiplier
 
 
 ## The share of one shot's damage each ray deals: 1 for a single ray, SPLIT_TOTAL / rays for a
@@ -226,10 +295,21 @@ static func ray_share(stats: WeaponStats) -> float:
 
 ## What one ray's blast deals to each enemy inside its radius, at the distance the round travelled:
 ## never a crit, so it is the same for every enemy it reaches. Zero without explosive ammo.
-static func blast_damage(stats: WeaponStats, distance: float) -> float:
+static func blast_damage(stats: WeaponStats, distance: float, charge := 0.0) -> float:
 	if stats.blast_radius() <= 0.0 or distance > stats.max_range:
 		return 0.0
-	return stats.damage * falloff_multiplier(stats, distance) * ray_share(stats) * EXPLOSIVE_BLAST_SHARE
+	var damage := stats.damage * falloff_multiplier(stats, distance) * ray_share(stats) * EXPLOSIVE_BLAST_SHARE
+	if stats.fire_mode() == "charge":
+		damage *= 1.0 + CHARGE_BONUS * clampf(charge, 0.0, 1.0)
+	return damage
+
+
+## The blast radius of a round fired at `charge` (a full Charge shot widens it).
+func blast_radius_at(charge: float) -> float:
+	var radius := blast_radius()
+	if fire_mode() == "charge":
+		radius *= 1.0 + CHARGE_BLAST_GROWTH * clampf(charge, 0.0, 1.0)
+	return radius
 
 
 ## 1.0 up to falloff_start, falling linearly to falloff_floor at falloff_end and beyond.
@@ -252,6 +332,7 @@ static func expected_damage(stats: WeaponStats, context: ShotContext) -> float:
 	no_crit.falloff_end = stats.falloff_end
 	no_crit.falloff_floor = stats.falloff_floor
 	no_crit.behaviours = stats.behaviours
+	no_crit.extra = stats.extra
 	no_crit.crit_chance = 0.0
 	var shot := resolve_shot(no_crit, context, rng)
 	return shot.damage * (1.0 + stats.crit_chance * (stats.crit_multiplier - 1.0))
@@ -263,7 +344,9 @@ static func expected_damage(stats: WeaponStats, context: ShotContext) -> float:
 static func expected_damage_at(stats: WeaponStats, distance: float) -> float:
 	var context := ShotContext.new()
 	context.distance = distance
-	var per_ray := expected_damage(stats, context) + blast_damage(stats, distance)
+	# A Charge receiver's readouts assume a full charge; its sustained rate counts the charge time.
+	context.charge = 1.0 if stats.fire_mode() == "charge" else 0.0
+	var per_ray := expected_damage(stats, context) + blast_damage(stats, distance, context.charge)
 	return per_ray * int(stats.behaviours.get("ray_count", 1)) * ray_hit_share(stats, distance)
 
 
@@ -284,10 +367,37 @@ func seconds_between_shots() -> float:
 	return 1.0 / fire_rate
 
 
-## Sustained damage per second including reloads, for the bench summary.
+## Seconds from one round to the next when firing flat out: the cooldown, plus a full charge for
+## a Charge receiver.
+func seconds_per_round() -> float:
+	return seconds_between_shots() + charge_time()
+
+
+func charge_time() -> float:
+	return float(behaviours.get("charge_time", 0.0)) if fire_mode() == "charge" else 0.0
+
+
+## Rounds fired per magazine: more than it holds when some shots are free (Overflow).
+func rounds_per_magazine() -> float:
+	return magazine_size / maxf(1.0 - clampf(extra_percent(FREE_SHOT_KEY), 0.0, 0.9), 0.1)
+
+
+## Sustained damage per second including reloads, for the bench summary. A burning round adds its
+## burn (one burn per robot, refreshed while the fire keeps up, so about a burn's worth a second).
 func sustained_dps(distance := 10.0) -> float:
-	var magazine_time := magazine_size * seconds_between_shots()
-	return WeaponStats.expected_damage_at(self, distance) * magazine_size / (magazine_time + reload_time)
+	var rounds := rounds_per_magazine()
+	var magazine_time := rounds * seconds_per_round()
+	var per_round := WeaponStats.expected_damage_at(self, distance)
+	var dps := per_round * rounds / (magazine_time + reload_time)
+	if String(behaviours.get("on_hit", "")) == "burn":
+		dps += per_round * StatusEffects.BURN_SHARE_PER_SECOND
+	return dps
+
+
+## A modifier sum from `extra`, percent and flat together (keys like ammo refund or status duration).
+func extra_percent(key: String) -> float:
+	var entry: Dictionary = extra.get(key, {})
+	return float(entry.get("percent", 0.0)) + float(entry.get("flat", 0.0))
 
 
 func shots_to_kill(health: float, distance := 10.0) -> int:
@@ -309,6 +419,16 @@ func blast_radius() -> float:
 ## One plus the build's weak-point damage bonus (the Precise affix).
 func weak_point_bonus() -> float:
 	return 1.0 + float(extra.get(WEAK_POINT_KEY, {}).get("percent", 0.0))
+
+
+## How much wider weak points count (Reflex sight).
+func weak_point_scale() -> float:
+	return maxf(float(behaviours.get("weak_point_scale", 1.0)), 1.0)
+
+
+## Status effects last this many times their base duration (Lingering, Status Mastery).
+func status_duration_scale() -> float:
+	return maxf(1.0 + extra_percent(STATUS_DURATION_KEY), 0.1)
 
 
 ## Short human-readable list of the behaviours that differ from a plain semi-automatic pistol.
@@ -334,8 +454,30 @@ func describe_behaviours() -> PackedStringArray:
 			pass
 		"shell":
 			parts.append("explosive shells (%.1f m blast)" % blast_radius() if blast_radius() > 0.0 else "shells")
+		"charge":
+			parts.append("charged rounds" + (" (%.1f to %.1f m blast)" % [blast_radius(), blast_radius_at(1.0)] if blast_radius() > 0.0 else ""))
 		var profile:
 			parts.append(String(profile).capitalize() + " rounds")
+	match String(behaviours.get("on_hit", "")):
+		"burn":
+			parts.append("burns")
+		"cryo":
+			parts.append("slows and shatters")
+		"shock":
+			parts.append("arcs")
+	if bool(behaviours.get("hollow_point", false)):
+		parts.append("hollow point")
+	if float(behaviours.get("rangefinder", 0.0)) > 0.0:
+		parts.append("rangefinder")
+	if float(behaviours.get("spread_degrees", 0.0)) > 0.0 and int(behaviours.get("ray_count", 1)) == 1:
+		parts.append("%.1f° spread" % float(behaviours.get("spread_degrees", 0.0)))
+	match String(behaviours.get("alt_fire", "")):
+		"launcher":
+			parts.append("grenade launcher")
+	if bool(behaviours.get("reload_shield", false)):
+		parts.append("reload shield")
+	if bool(behaviours.get("scanner", false)):
+		parts.append("scanner")
 	return parts
 
 

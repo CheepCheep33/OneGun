@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="AttachmentDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/attachment_definition.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/weapons/stat_modifier.gd" id="2_mod"]
+
+[resource]
+script = ExtResource("1_def")
+id = &"hollow_point"
+display_name = "Hollow point"
+slot = &"ammo"
+description = "35% more damage against light robots, 40% less against armoured ones (heavies, turrets, bosses)."
+modifiers = Array[ExtResource("2_mod")]([])
+mark_scale = 0.15
+behaviours = {"hollow_point": true}
+is_default = false
+unlock_wave = 0
+gate_text = ""
+unlock_flag = ""
+visual = {"slide_color": Color(0.5, 0.45, 0.4, 1)}

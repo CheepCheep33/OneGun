@@ -28,3 +28,7 @@ is_default = false
 unlock_wave = 0
 gate_text = ""
 visual = {"grip_height": 1.45}
+legendary_name = "Bottomless"
+legendary_description = "Every kill puts two rounds back in the magazine."
+legendary_modifiers = Array[ExtResource("2_mod")]([])
+legendary_behaviours = {"kill_refill": 2}

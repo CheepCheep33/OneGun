@@ -17,9 +17,11 @@ signal enemy_killed(enemy: Enemy, credits: int)
 signal remaining_changed(remaining: int, total: int)
 signal wave_cleared(wave: WaveDefinition, duration: float)
 signal boss_spawned(enemy: Enemy)
+## Every spawn, the boss's adds included (the HUD's Scanner markers follow turrets with it).
+signal enemy_spawned(enemy: Enemy)
 
 const WAVE_DIR := "res://data/waves/"
-const WAVE_COUNT := 15
+const WAVE_COUNT := 20
 ## Most nodes of one enemy scene kept in the reserve.
 const RESERVE_CAP := 16
 ## Enemies readied per frame while the reserve fills behind the first bench.
@@ -34,8 +36,15 @@ const WARM_UP_PER_FRAME := 2
 var current: WaveDefinition
 var running := false
 var elapsed := 0.0
-## Multiplier for enemy health and credits this wave (wave tier and Reforge tier).
+## Multiplier for enemy health this wave (wave tier and Reforge tier).
 var scale := 1.0
+## Multiplier for the credits a kill pays (Progression.income_multiplier); its Reforge step is
+## steeper than the enemies'.
+var income_scale := 1.0
+## The encounter's modifiers for every robot it spawns (the Signal Tower's floors): a movement
+## speed multiplier and extra flat armour. The game sets them; 1 and 0 for the main waves.
+var speed_modifier := 1.0
+var armor_bonus := 0.0
 
 var _player: Player
 var _arena: Node
@@ -70,6 +79,11 @@ static func all_waves() -> Array[WaveDefinition]:
 func setup(player: Player, arena: Node) -> void:
 	_player = player
 	_arena = arena
+
+
+func set_modifiers(speed := 1.0, armor := 0.0) -> void:
+	speed_modifier = speed
+	armor_bonus = armor
 
 
 ## Fills the reserve, a few enemies a frame, with as many of each scene as any authored wave can
@@ -145,10 +159,11 @@ func reserved_count(scene_path := "") -> int:
 
 
 ## Clears any leftover enemies and starts the wave. Spawning waits for the first physics tick.
-func start(wave: WaveDefinition, reward_scale := 1.0) -> void:
+func start(wave: WaveDefinition, reward_scale := 1.0, credit_scale := -1.0) -> void:
 	clear_enemies()
 	current = wave
 	scale = reward_scale
+	income_scale = credit_scale if credit_scale >= 0.0 else reward_scale
 	elapsed = 0.0
 	_spawned = 0
 	_killed = 0
@@ -254,6 +269,8 @@ func spawn_at(position: Vector3, definition: EnemyDefinition = null, scene: Pack
 	enemy.health_scale = scale
 	enemy.target = _player
 	enemy.summoned = false
+	enemy.speed_modifier = speed_modifier
+	enemy.armor_bonus = armor_bonus
 	_container.add_child(enemy)
 	enemy.reset()
 	enemy.global_position = position
@@ -264,6 +281,7 @@ func spawn_at(position: Vector3, definition: EnemyDefinition = null, scene: Pack
 	if not enemy.summon_requested.is_connected(_on_summon_requested):
 		enemy.summon_requested.connect(_on_summon_requested)
 	_spawned += 1
+	enemy_spawned.emit(enemy)
 	if definition.is_boss:
 		boss_spawned.emit(enemy)
 	return enemy
@@ -343,7 +361,7 @@ func dismiss_summons() -> void:
 
 
 func _on_enemy_died(enemy: Enemy) -> void:
-	var credits := maxi(roundi(enemy.definition.credit_reward * scale), 1)
+	var credits := maxi(roundi(enemy.definition.credit_reward * income_scale), 1)
 	enemy_killed.emit(enemy, credits)
 	if enemy.definition.is_boss:
 		dismiss_summons.call_deferred()

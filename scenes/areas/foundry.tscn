@@ -1,0 +1,359 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/areas/foundry.gd" id="1_area"]
+[ext_resource type="Texture2D" path="res://assets/textures/placeholder_grid.png" id="2_grid"]
+
+[sub_resource type="NavigationMesh" id="NavigationMesh_foundry"]
+geometry_parsed_geometry_type = 1
+cell_size = 0.25
+cell_height = 0.25
+agent_height = 1.75
+agent_radius = 0.5
+agent_max_climb = 0.25
+
+[sub_resource type="StandardMaterial3D" id="Mat_floor"]
+resource_name = "placeholder_foundry_floor"
+albedo_color = Color(0.3, 0.27, 0.25, 1)
+albedo_texture = ExtResource("2_grid")
+roughness = 0.9
+uv1_scale = Vector3(0.5, 0.5, 0.5)
+uv1_triplanar = true
+uv1_world_triplanar = true
+
+[sub_resource type="StandardMaterial3D" id="Mat_wall"]
+resource_name = "placeholder_foundry_wall"
+albedo_color = Color(0.36, 0.3, 0.27, 1)
+albedo_texture = ExtResource("2_grid")
+roughness = 0.9
+uv1_scale = Vector3(0.5, 0.5, 0.5)
+uv1_triplanar = true
+uv1_world_triplanar = true
+
+[sub_resource type="StandardMaterial3D" id="Mat_pillar"]
+resource_name = "placeholder_foundry_pillar"
+albedo_color = Color(0.42, 0.36, 0.3, 1)
+albedo_texture = ExtResource("2_grid")
+roughness = 0.9
+uv1_scale = Vector3(0.5, 0.5, 0.5)
+uv1_triplanar = true
+uv1_world_triplanar = true
+
+[sub_resource type="StandardMaterial3D" id="Mat_vat"]
+resource_name = "placeholder_foundry_vat"
+albedo_color = Color(0.5, 0.3, 0.18, 1)
+albedo_texture = ExtResource("2_grid")
+roughness = 0.9
+uv1_scale = Vector3(0.5, 0.5, 0.5)
+uv1_triplanar = true
+uv1_world_triplanar = true
+
+[sub_resource type="StandardMaterial3D" id="Mat_spawn"]
+resource_name = "placeholder_spawn_pad"
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 0.2, 0.15, 0.55)
+
+[sub_resource type="CylinderMesh" id="Mesh_spawn"]
+material = SubResource("Mat_spawn")
+top_radius = 1.0
+bottom_radius = 1.0
+height = 0.04
+radial_segments = 24
+rings = 1
+
+[sub_resource type="StandardMaterial3D" id="Mat_heat_warning"]
+resource_name = "placeholder_heat_warning"
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 0.55, 0.1, 0.35)
+
+[sub_resource type="StandardMaterial3D" id="Mat_heat_molten"]
+resource_name = "placeholder_heat_molten"
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 0.38, 0.05, 0.85)
+
+[sub_resource type="BoxMesh" id="Mesh_heat"]
+size = Vector3(20, 0.04, 3)
+
+
+[sub_resource type="BoxMesh" id="Mesh_Floor"]
+material = SubResource("Mat_floor")
+size = Vector3(24, 1, 24)
+
+[sub_resource type="BoxShape3D" id="Shape_Floor"]
+size = Vector3(24, 1, 24)
+
+[sub_resource type="BoxMesh" id="Mesh_WallNorth"]
+material = SubResource("Mat_wall")
+size = Vector3(24, 5, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_WallNorth"]
+size = Vector3(24, 5, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_WallSouth"]
+material = SubResource("Mat_wall")
+size = Vector3(24, 5, 1)
+
+[sub_resource type="BoxShape3D" id="Shape_WallSouth"]
+size = Vector3(24, 5, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_WallWest"]
+material = SubResource("Mat_wall")
+size = Vector3(1, 5, 26)
+
+[sub_resource type="BoxShape3D" id="Shape_WallWest"]
+size = Vector3(1, 5, 26)
+
+[sub_resource type="BoxMesh" id="Mesh_WallEast"]
+material = SubResource("Mat_wall")
+size = Vector3(1, 5, 26)
+
+[sub_resource type="BoxShape3D" id="Shape_WallEast"]
+size = Vector3(1, 5, 26)
+
+[sub_resource type="BoxMesh" id="Mesh_Pillar1"]
+material = SubResource("Mat_pillar")
+size = Vector3(1.6, 4, 1.6)
+
+[sub_resource type="BoxShape3D" id="Shape_Pillar1"]
+size = Vector3(1.6, 4, 1.6)
+
+[sub_resource type="BoxMesh" id="Mesh_Pillar2"]
+material = SubResource("Mat_pillar")
+size = Vector3(1.6, 4, 1.6)
+
+[sub_resource type="BoxShape3D" id="Shape_Pillar2"]
+size = Vector3(1.6, 4, 1.6)
+
+[sub_resource type="BoxMesh" id="Mesh_Pillar3"]
+material = SubResource("Mat_pillar")
+size = Vector3(1.6, 4, 1.6)
+
+[sub_resource type="BoxShape3D" id="Shape_Pillar3"]
+size = Vector3(1.6, 4, 1.6)
+
+[sub_resource type="BoxMesh" id="Mesh_Pillar4"]
+material = SubResource("Mat_pillar")
+size = Vector3(1.6, 4, 1.6)
+
+[sub_resource type="BoxShape3D" id="Shape_Pillar4"]
+size = Vector3(1.6, 4, 1.6)
+
+[sub_resource type="BoxMesh" id="Mesh_VatWest"]
+material = SubResource("Mat_vat")
+size = Vector3(2.4, 1.3, 3.0)
+
+[sub_resource type="BoxShape3D" id="Shape_VatWest"]
+size = Vector3(2.4, 1.3, 3.0)
+
+[sub_resource type="BoxMesh" id="Mesh_VatEast"]
+material = SubResource("Mat_vat")
+size = Vector3(2.4, 1.3, 3.0)
+
+[sub_resource type="BoxShape3D" id="Shape_VatEast"]
+size = Vector3(2.4, 1.3, 3.0)
+
+[node name="Foundry" type="Node3D"]
+script = ExtResource("1_area")
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+navigation_mesh = SubResource("NavigationMesh_foundry")
+
+[node name="Floor" type="StaticBody3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Floor"]
+mesh = SubResource("Mesh_Floor")
+
+[node name="Collision" type="CollisionShape3D" parent="NavigationRegion3D/Floor"]
+shape = SubResource("Shape_Floor")
+
+[node name="WallNorth" type="StaticBody3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, -12.5)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/WallNorth"]
+mesh = SubResource("Mesh_WallNorth")
+
+[node name="Collision" type="CollisionShape3D" parent="NavigationRegion3D/WallNorth"]
+shape = SubResource("Shape_WallNorth")
+
+[node name="WallSouth" type="StaticBody3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 12.5)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/WallSouth"]
+mesh = SubResource("Mesh_WallSouth")
+
+[node name="Collision" type="CollisionShape3D" parent="NavigationRegion3D/WallSouth"]
+shape = SubResource("Shape_WallSouth")
+
+[node name="WallWest" type="StaticBody3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 2.5, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/WallWest"]
+mesh = SubResource("Mesh_WallWest")
+
+[node name="Collision" type="CollisionShape3D" parent="NavigationRegion3D/WallWest"]
+shape = SubResource("Shape_WallWest")
+
+[node name="WallEast" type="StaticBody3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 2.5, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/WallEast"]
+mesh = SubResource("Mesh_WallEast")
+
+[node name="Collision" type="CollisionShape3D" parent="NavigationRegion3D/WallEast"]
+shape = SubResource("Shape_WallEast")
+
+[node name="Pillar1" type="StaticBody3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 2, -5)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Pillar1"]
+mesh = SubResource("Mesh_Pillar1")
+
+[node name="Collision" type="CollisionShape3D" parent="NavigationRegion3D/Pillar1"]
+shape = SubResource("Shape_Pillar1")
+
+[node name="Pillar2" type="StaticBody3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 2, -5)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Pillar2"]
+mesh = SubResource("Mesh_Pillar2")
+
+[node name="Collision" type="CollisionShape3D" parent="NavigationRegion3D/Pillar2"]
+shape = SubResource("Shape_Pillar2")
+
+[node name="Pillar3" type="StaticBody3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 2, 5)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Pillar3"]
+mesh = SubResource("Mesh_Pillar3")
+
+[node name="Collision" type="CollisionShape3D" parent="NavigationRegion3D/Pillar3"]
+shape = SubResource("Shape_Pillar3")
+
+[node name="Pillar4" type="StaticBody3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 2, 5)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/Pillar4"]
+mesh = SubResource("Mesh_Pillar4")
+
+[node name="Collision" type="CollisionShape3D" parent="NavigationRegion3D/Pillar4"]
+shape = SubResource("Shape_Pillar4")
+
+[node name="VatWest" type="StaticBody3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.5, 0.65, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/VatWest"]
+mesh = SubResource("Mesh_VatWest")
+
+[node name="Collision" type="CollisionShape3D" parent="NavigationRegion3D/VatWest"]
+shape = SubResource("Shape_VatWest")
+
+[node name="VatEast" type="StaticBody3D" parent="NavigationRegion3D"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.5, 0.65, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="NavigationRegion3D/VatEast"]
+mesh = SubResource("Mesh_VatEast")
+
+[node name="Collision" type="CollisionShape3D" parent="NavigationRegion3D/VatEast"]
+shape = SubResource("Shape_VatEast")
+
+[node name="SpawnPoints" type="Node3D" parent="."]
+
+[node name="Spawn1" type="Marker3D" parent="SpawnPoints" groups=["enemy_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9, 0, -9)
+
+[node name="Pad" type="MeshInstance3D" parent="SpawnPoints/Spawn1"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_spawn")
+
+[node name="Spawn2" type="Marker3D" parent="SpawnPoints" groups=["enemy_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, -9)
+
+[node name="Pad" type="MeshInstance3D" parent="SpawnPoints/Spawn2"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_spawn")
+
+[node name="Spawn3" type="Marker3D" parent="SpawnPoints" groups=["enemy_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -10)
+
+[node name="Pad" type="MeshInstance3D" parent="SpawnPoints/Spawn3"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_spawn")
+
+[node name="Spawn4" type="Marker3D" parent="SpawnPoints" groups=["enemy_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9, 0, 9)
+
+[node name="Pad" type="MeshInstance3D" parent="SpawnPoints/Spawn4"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_spawn")
+
+[node name="Spawn5" type="Marker3D" parent="SpawnPoints" groups=["enemy_spawn"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 0, 9)
+
+[node name="Pad" type="MeshInstance3D" parent="SpawnPoints/Spawn5"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+cast_shadow = 0
+mesh = SubResource("Mesh_spawn")
+
+[node name="Hazards" type="Node3D" parent="."]
+
+[node name="Strip1" type="Node3D" parent="Hazards"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, -8.0)
+
+[node name="Warning" type="MeshInstance3D" parent="Hazards/Strip1"]
+cast_shadow = 0
+mesh = SubResource("Mesh_heat")
+surface_material_override/0 = SubResource("Mat_heat_warning")
+
+[node name="Molten" type="MeshInstance3D" parent="Hazards/Strip1"]
+cast_shadow = 0
+mesh = SubResource("Mesh_heat")
+surface_material_override/0 = SubResource("Mat_heat_molten")
+
+[node name="Strip2" type="Node3D" parent="Hazards"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, -2.5)
+
+[node name="Warning" type="MeshInstance3D" parent="Hazards/Strip2"]
+cast_shadow = 0
+mesh = SubResource("Mesh_heat")
+surface_material_override/0 = SubResource("Mat_heat_warning")
+
+[node name="Molten" type="MeshInstance3D" parent="Hazards/Strip2"]
+cast_shadow = 0
+mesh = SubResource("Mesh_heat")
+surface_material_override/0 = SubResource("Mat_heat_molten")
+
+[node name="Strip3" type="Node3D" parent="Hazards"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 2.5)
+
+[node name="Warning" type="MeshInstance3D" parent="Hazards/Strip3"]
+cast_shadow = 0
+mesh = SubResource("Mesh_heat")
+surface_material_override/0 = SubResource("Mat_heat_warning")
+
+[node name="Molten" type="MeshInstance3D" parent="Hazards/Strip3"]
+cast_shadow = 0
+mesh = SubResource("Mesh_heat")
+surface_material_override/0 = SubResource("Mat_heat_molten")
+
+[node name="Strip4" type="Node3D" parent="Hazards"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03, 8.0)
+
+[node name="Warning" type="MeshInstance3D" parent="Hazards/Strip4"]
+cast_shadow = 0
+mesh = SubResource("Mesh_heat")
+surface_material_override/0 = SubResource("Mat_heat_warning")
+
+[node name="Molten" type="MeshInstance3D" parent="Hazards/Strip4"]
+cast_shadow = 0
+mesh = SubResource("Mesh_heat")
+surface_material_override/0 = SubResource("Mat_heat_molten")
+
+[node name="PlayerStart" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 10.5)

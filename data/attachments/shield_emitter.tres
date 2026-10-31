@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="AttachmentDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/attachment_definition.gd" id="1_def"]
+[ext_resource type="Script" path="res://scripts/weapons/stat_modifier.gd" id="2_mod"]
+
+[sub_resource type="Resource" id="Mod_1"]
+script = ExtResource("2_mod")
+stat = &"reload_speed"
+flat = 0.0
+percent = -0.1
+
+[resource]
+script = ExtResource("1_def")
+id = &"shield_emitter"
+display_name = "Shield emitter"
+slot = &"underbarrel"
+description = "Throws up a frontal shield while you reload: 70% less damage from the front until the reload ends."
+modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1")])
+mark_scale = 0.15
+behaviours = {"reload_shield": true}
+is_default = false
+unlock_wave = 0
+gate_text = ""
+unlock_flag = ""
+visual = {"underbarrel": "shield"}

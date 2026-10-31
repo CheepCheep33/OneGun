@@ -10,4 +10,4 @@ stat = &"status_duration"
 is_percent = true
 min_by_rarity = Array[float]([0.0, 0.10, 0.15, 0.20, 0.25])
 max_by_rarity = Array[float]([0.0, 0.20, 0.30, 0.40, 0.50])
-drops = false
+drops = true

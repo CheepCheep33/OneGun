@@ -26,6 +26,12 @@ const BEARER := "res://data/enemies/shield_bearer.tres"
 const BEARER_SCENE := "res://scenes/enemies/shield_bearer.tscn"
 const FOREMAN := "res://data/enemies/foreman.tres"
 const FOREMAN_SCENE := "res://scenes/enemies/foreman.tscn"
+const TURRET := "res://data/enemies/turret.tres"
+const TURRET_SCENE := "res://scenes/enemies/turret.tscn"
+const SENTINEL := "res://data/enemies/sentinel.tres"
+const SENTINEL_SCENE := "res://scenes/enemies/sentinel.tscn"
+const GUARDIAN := "res://data/enemies/core_guardian.tres"
+const GUARDIAN_SCENE := "res://scenes/enemies/core_guardian.tscn"
 
 
 func _ready() -> void:
@@ -131,6 +137,7 @@ class Probe:
 		await _seconds(0.5)
 		game.wave_runner.clear_enemies()
 		await _milestone_4_events(pistol)
+		await _milestone_5_events(pistol)
 		await _event("a reload", 12, func() -> void:
 			pistol.ammo = 1
 			pistol.request_reload())
@@ -154,6 +161,8 @@ class Probe:
 		pistol.apply_build(Progression.build_stats(), Progression.equipped())
 		game.wave_runner.clear_enemies()
 		await _scrapyard_events()
+		await _foundry_events()
+		await _tower_events()
 		print("")
 		get_tree().quit(0)
 
@@ -215,6 +224,134 @@ class Probe:
 		game.wave_runner.clear_enemies()
 		game.projectiles.clear_all()
 		await _seconds(0.5)
+
+	## Milestone 5: the status ammo (frost, shatter, arcs, burns), a charged shot, a grenade, the
+	## turret's aim line and heavy bolt with the Scanner's marker, the Sentinel's sweep, and the Core
+	## Guardian's slam, vent and boss card.
+	func _milestone_5_events(pistol: Pistol) -> void:
+		var target := _spawn(CHASER, CHASER_SCENE, 6.0, 0.0)
+		target.health = 1.0e9
+		var neighbour := _spawn(CHASER, CHASER_SCENE, 6.0, 1.5)
+		neighbour.health = 1.0e9
+		await _seconds(Enemy.SPAWN_TIME + 0.4)
+		var context := WeaponStats.ShotContext.new()
+		var cryo := {"ammo": Items.make(&"cryo")}
+		var cryo_stats := WeaponStats.build(Progression.PISTOL_BASE, Progression.core_levels(), cryo)
+		await _event("a Cryo hit frosts an enemy", 20, func() -> void:
+			ShotPipeline.apply_hit(target, target.center(), Vector3.FORWARD, cryo_stats, context, _shot(pistol)))
+		await _event("a Cryo shatter", 30, func() -> void:
+			target.slow_age = StatusEffects.SHATTER_AFTER + 0.1
+			ShotPipeline.apply_hit(target, target.center(), Vector3.FORWARD, cryo_stats, context, _shot(pistol)))
+		await _seconds(0.5)
+		await _event("a second Cryo shatter", 30, func() -> void:
+			ShotPipeline.apply_hit(target, target.center(), Vector3.FORWARD, cryo_stats, context, _shot(pistol))
+			target.slow_age = StatusEffects.SHATTER_AFTER + 0.1
+			ShotPipeline.apply_hit(target, target.center(), Vector3.FORWARD, cryo_stats, context, _shot(pistol)), true)
+		var shock_stats := WeaponStats.build(Progression.PISTOL_BASE, Progression.core_levels(), {"ammo": Items.make(&"shock")})
+		await _event("a Shock hit arcs and stuns", 20, func() -> void:
+			ShotPipeline.apply_hit(target, target.center(), Vector3.FORWARD, shock_stats, context, _shot(pistol)))
+		await _seconds(0.4)
+		await _event("a second Shock arc", 20, func() -> void:
+			ShotPipeline.apply_hit(target, target.center(), Vector3.FORWARD, shock_stats, context, _shot(pistol)), true)
+		var burn_stats := WeaponStats.build(Progression.PISTOL_BASE, Progression.core_levels(), {"ammo": Items.make(&"incendiary")})
+		await _event("an Incendiary hit sets an enemy burning", 40, func() -> void:
+			ShotPipeline.apply_hit(neighbour, neighbour.center(), Vector3.FORWARD, burn_stats, context, _shot(pistol)))
+		var charge := {"receiver": Items.make(&"charge")}
+		pistol.apply_build(WeaponStats.build(Progression.PISTOL_BASE, Progression.core_levels(), charge), charge)
+		await _seconds(0.3)
+		await _event("the Charge meter fills", 40, func() -> void: pistol.request_fire())
+		await _event("a charged round fires", 20, func() -> void: pistol.release_fire())
+		await _seconds(0.4)
+		pistol.request_fire()
+		await _seconds(pistol.stats.charge_time() + 0.1)
+		await _event("a second charged round", 20, func() -> void: pistol.release_fire(), true)
+		var launcher := {"underbarrel": Items.make(&"launcher"), "optic": Items.make(&"scanner")}
+		pistol.apply_build(WeaponStats.build(Progression.PISTOL_BASE, Progression.core_levels(), launcher), launcher)
+		await _seconds(0.3)
+		pistol.grenades = Pistol.GRENADE_MAX
+		await _event("a Launcher grenade flies and bursts", 70, func() -> void: pistol.request_alt_fire())
+		pistol._grenade_cooldown = 0.0
+		await _event("a second grenade", 70, func() -> void: pistol.request_alt_fire(), true)
+		game.wave_runner.clear_enemies()
+		await _seconds(0.3)
+		var spawned: Array[Enemy] = []
+		await _event("a turret spawns, the Scanner marks it", 20, func() -> void: spawned.append(_spawn(TURRET, TURRET_SCENE, 8.0, 0.0)))
+		var turret: Turret = spawned.pop_back()
+		turret.health = 1.0e9
+		await _seconds(Enemy.SPAWN_TIME + 0.2)
+		await _event("the turret's aim line and heavy bolt", 130, func() -> void: turret._cooldown_left = 0.0)
+		await _event("the turret aims and fires again", 130, func() -> void: turret._cooldown_left = 0.0, true)
+		game.wave_runner.clear_enemies()
+		game.projectiles.clear_all()
+		game.hud.clear_scan_targets()
+		pistol.apply_build(Progression.build_stats(), Progression.equipped())
+		await _seconds(0.3)
+		await _event("a story card shows", 20, func() -> void: game.hud.show_story("VERA", "The probe's line: a card over the arena, the way a boss's intro shows."))
+		game.hud.hide_story()
+		await _event("the Sentinel spawns, its card shows", 20, func() -> void: spawned.append(_spawn(SENTINEL, SENTINEL_SCENE, 10.0, 0.0)))
+		var sentinel: Sentinel = spawned.pop_back()
+		sentinel.health = 1.0e9
+		await _seconds(Enemy.SPAWN_TIME + 0.2)
+		await _event("the Sentinel's sweep: warning, then beam", 150, func() -> void:
+			sentinel.sweep.start(game.player.global_position, sentinel.global_position))
+		await _event("a second sweep", 150, func() -> void:
+			sentinel.sweep.start(game.player.global_position, sentinel.global_position), true)
+		game.wave_runner.clear_enemies()
+		game.hud.hide_story()
+		await _seconds(0.3)
+		await _event("the Core Guardian spawns", 20, func() -> void: spawned.append(_spawn(GUARDIAN, GUARDIAN_SCENE, 12.0, 0.0)))
+		var guardian: CoreGuardian = spawned.pop_back()
+		guardian.health = 1.0e9
+		await _seconds(Enemy.SPAWN_TIME + 0.2)
+		await _event("the Guardian's slam ring", 30, func() -> void: guardian._slam())
+		await _event("the Guardian vents, core open", 30, func() -> void: guardian._start_vent())
+		await _event("the vent ends, core shut", 30, func() -> void: guardian._end_vent())
+		await _event("the Guardian vents again", 30, func() -> void: guardian._start_vent(), true)
+		game.wave_runner.clear_enemies()
+		game.projectiles.clear_all()
+		game.hud.hide_story()
+		await _seconds(0.5)
+
+	## The Foundry's heat strips warn and melt mid-run.
+	func _foundry_events() -> void:
+		Progression.add_unlock("foundry")
+		for wave in range(1, 11):
+			Progression.record_wave_cleared(wave, 0, 1.0)
+		game.open_bench()
+		await _seconds(0.3)
+		game.enter_area("foundry")
+		await _seconds(2.5)
+		game.wave_runner.stop()
+		game.wave_runner.clear_enemies()
+		game.player.health = 1.0e9
+		var foundry: Node3D = game.arena
+		foundry.running = false # the strips change only when this probe says
+		await _seconds(0.5)
+		var strips: Array = foundry._strips
+		await _event("a heat strip warns", 20, func() -> void: strips[0].get_node("Warning").visible = true)
+		await _event("the strip melts", 20, func() -> void:
+			strips[0].get_node("Warning").visible = false
+			strips[0].get_node("Molten").visible = true)
+		await _event("a second strip warns and melts", 20, func() -> void:
+			strips[1].get_node("Warning").visible = true
+			strips[1].get_node("Molten").visible = true, true)
+
+	## The Signal Tower's pad lights between floors.
+	func _tower_events() -> void:
+		for wave in range(1, 16):
+			Progression.record_wave_cleared(wave, 0, 1.0)
+		game.open_bench()
+		await _seconds(0.3)
+		game.enter_area("signal_tower")
+		await _seconds(2.5)
+		game.wave_runner.stop()
+		game.wave_runner.clear_enemies()
+		game.player.health = 1.0e9
+		var tower: Node3D = game.arena
+		await _seconds(0.5)
+		await _event("the tower's pad lights", 20, func() -> void: tower._set_pad(true))
+		await _event("the pad goes dark", 20, func() -> void: tower._set_pad(false))
+		await _event("the pad lights again", 20, func() -> void: tower._set_pad(true), true)
 
 	## The Scrapyard: entering is a load at the bench, but the door opening and a core pickup happen
 	## mid-run.

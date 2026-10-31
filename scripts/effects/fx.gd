@@ -49,6 +49,13 @@ static func blast(context: Node, position: Vector3, radius: float) -> void:
 		pool.blast(position, radius)
 
 
+## A frost-blue sphere that swells to `radius` and vanishes: a Cryo shatter.
+static func shatter(context: Node, position: Vector3, radius: float) -> void:
+	var pool := _pool(context)
+	if pool:
+		pool.shatter(position, radius)
+
+
 ## Positional sound that outlives the node that triggered it (for example a dying enemy).
 static func sound_at(context: Node, stream: AudioStream, position: Vector3, volume_db := 0.0, pitch := 1.0) -> void:
 	var pool := _pool(context)

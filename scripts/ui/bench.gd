@@ -1,12 +1,17 @@
 class_name Bench
 extends CanvasLayer
-## The intermission bench: core tuning purchases and the crafting table (two tabs on the left), the
-## gunsmith slots, the inventory and overflow tray with compare, side-area doors and wave select. Runs while the tree is paused. Reads and
+## The intermission bench: core tuning, the crafting table (craft, reroll, refine, fuse,
+## transmute), the skill trees and the story log (four tabs on the left), the gunsmith slots, the
+## inventory and overflow tray with compare, side-area doors and wave select. On the Signal Tower's
+## loadout pads it opens in pad mode: the gunsmith only, and the start button climbs. Runs while
+## the tree is paused. Reads and
 ## writes progression only through the Progression autoload, and every number it shows comes from
 ## the same WeaponStats functions combat uses, so no preview ever lies.
 
 signal start_wave_requested(number: int)
 signal area_requested(area_id: String)
+## Pad mode's start button: the next Signal Tower floor.
+signal climb_requested
 
 const CHASER_DEFINITION := preload("res://data/enemies/chaser.tres")
 const LOCKED_COLOR := Color(0.6, 0.6, 0.62)
@@ -15,8 +20,10 @@ const ITEM_BUTTON_SIZE := Vector2(36, 32)
 const AREAS := [
 	{"id": "firing_range", "name": "Firing Range", "blurb": "Target dummies with damage readouts and a timed gallery. No enemies."},
 	{"id": "scrapyard", "name": "Scrapyard", "blurb": "A salvage run: grab scrap cores off the wrecks under rising spawns, then extract at the south door when it opens after 90 s. Parts in bulk and a Rare every extraction. Dying or leaving loses the cores you carry."},
+	{"id": "foundry", "name": "Foundry", "blurb": "A heat room: heavies and shield bearers while floor strips glow and then burn (jump or step off). One attempt per intermission. Cores every clear, the Burst receiver on the first, an Epic if you take no damage."},
+	{"id": "signal_tower", "name": "Signal Tower", "blurb": "Ten short floors, one rule each (double speed, no reloads, only crits count). Swap gear on the pad between floors. Floor 5 opens the Charge receiver; the top pays an Epic, the Overflow magazine and a Legendary core once per tier."},
 ]
-## Rarities the crafting table makes; Legendaries come from a Legendary core (Milestone 5).
+## Rarities the crafting table makes; Legendaries come from transmuting an Epic with a Legendary core.
 const CRAFT_RARITIES := [Items.Rarity.COMMON, Items.Rarity.UNCOMMON, Items.Rarity.RARE, Items.Rarity.EPIC]
 
 var selected_wave := 1
@@ -42,6 +49,27 @@ var _craft_button: Button
 var _reroll_title: Label
 var _reroll_buttons: Array[Button] = []
 var _craft_message_label: Label
+## Refine, fuse and transmute on the selected item (in the craft tab).
+var _upgrade_title: Label
+var _refine_button: Button
+var _fuse_button: Button
+var _transmute_button: Button
+## The skills tab: one column per tree, a button per node.
+var _skill_buttons: Dictionary = {} # skill id (String) -> Button
+var _skill_header: Label
+var _respec_button: Button
+## The description of the node last pointed at or pressed (tooltips do not exist on touch).
+var _skill_detail: Label
+var _skill_tab_button: Button
+var _story_tab_button: Button
+var _story_list: VBoxContainer
+## Tab id -> the control it shows (the craft, skills and story views scroll).
+var _tab_views: Dictionary = {}
+var _tab_buttons: Dictionary = {}
+## Pad mode (Signal Tower): the gunsmith only, and the start button climbs to `pad_floor` + 1.
+var pad_mode := false
+var pad_floor := 0
+var _pad_next := ""
 
 @onready var _credits_label: Label = %CreditsLabel
 @onready var _parts_label: Label = %PartsLabel
@@ -84,8 +112,10 @@ func _ready() -> void:
 	_build_wave_list()
 	_build_area_list()
 	_build_craft_view()
-	_core_tab_button.pressed.connect(show_tab.bind("core"))
-	_craft_tab_button.pressed.connect(show_tab.bind("craft"))
+	_build_upgrade_section()
+	_build_tabs()
+	_build_skills_view()
+	_build_story_view()
 	_start_button.pressed.connect(_on_start_pressed)
 	_reset_button.pressed.connect(_on_reset_pressed)
 	_dismantle_commons_button.pressed.connect(_on_dismantle_commons_pressed)
@@ -99,6 +129,7 @@ func _ready() -> void:
 
 
 func open() -> void:
+	_set_pad_mode(false)
 	_confirm_reset = false
 	_reset_button.text = "Reset progress"
 	selected_wave = clampi(Progression.next_wave(), 1, WaveRunner.WAVE_COUNT)
@@ -108,6 +139,9 @@ func open() -> void:
 	else:
 		_greeting.text = "Welcome back: %d kills, %d wave clears, %d credits earned, %d drops picked up." % [
 			int(records["kills"]), int(records["waves_cleared"]), int(records["credits_earned"]), int(records["pickups"])]
+	var vera := _vera_lines(Progression.take_story_queue())
+	if vera != "":
+		_greeting.text = vera
 	_storage_warning.visible = SaveFile.in_memory
 	_storage_warning.text = SaveFile.storage_warning
 	# The bench opens on the tray whenever it holds items (plan: Inventory).
@@ -125,19 +159,64 @@ func close() -> void:
 	visible = false
 
 
-## Shows the left panel's "core" (core tuning and the pistol summary) or "craft" tab.
+## VERA's lines from the triggers fired since the last bench (wave clears, the first death): the
+## greeting shows the newest two. Boss cards and logs were shown where they happened.
+func _vera_lines(triggers: Array) -> String:
+	var picked := PackedStringArray()
+	for trigger in triggers:
+		if String(trigger).begins_with("wave_") or trigger == "first_death":
+			picked.append(Story.describe(String(trigger)))
+	return "\n".join(picked.slice(maxi(picked.size() - 2, 0)))
+
+
+## Opens on a Signal Tower loadout pad: the gunsmith and inventory only (no crafting, respec or
+## tuning), and the start button climbs to the next floor.
+func open_pad(cleared_floor: int, next_text: String) -> void:
+	pad_floor = cleared_floor
+	_pad_next = next_text
+	_set_pad_mode(true)
+	_storage_warning.visible = false
+	_greeting.text = "Loadout pad, floor %d cleared. Swap attachments for the next floor: %s. Crafting and respec wait for the bench." % [cleared_floor, next_text]
+	if Progression.locate(selected_uid).is_empty():
+		selected_uid = -1
+	visible = true
+	refresh()
+	_start_button.grab_focus()
+
+
+func _set_pad_mode(value: bool) -> void:
+	pad_mode = value
+	$Margin/VBox/Body/CorePanel.visible = not value
+	for node_name in ["Heading", "WaveScroll", "WaveNote", "AreasHeading", "AreaList"]:
+		var node := get_node("Margin/VBox/Body/WavesPanel/Margin/VBox/" + node_name) as Control
+		node.visible = not value
+	_reset_button.visible = not value
+
+
+## Shows one tab of the left panel: "core" (core tuning and the pistol summary), "craft",
+## "skills" or "story".
 func show_tab(tab: String) -> void:
-	var crafting := tab == "craft"
-	_core_view.visible = not crafting
-	_craft_view.visible = crafting
-	_core_tab_button.button_pressed = not crafting
-	_craft_tab_button.button_pressed = crafting
-	if crafting:
-		_refresh_craft()
+	for id in _tab_views:
+		_tab_views[id].visible = id == tab
+		_tab_buttons[id].button_pressed = id == tab
+	match tab:
+		"craft":
+			_refresh_craft()
+		"skills":
+			_refresh_skills()
+		"story":
+			_refresh_story()
 
 
 func is_craft_tab_open() -> bool:
-	return _craft_view.visible
+	return _craft_view.is_visible_in_tree()
+
+
+func current_tab() -> String:
+	for id in _tab_views:
+		if _tab_views[id].visible:
+			return id
+	return "core"
 
 
 func select_item(uid: int) -> void:
@@ -176,9 +255,139 @@ func refresh() -> void:
 	_refresh_waves()
 	_refresh_areas()
 	_refresh_craft()
+	_refresh_skills()
+	_refresh_story()
+	if pad_mode:
+		_start_button.text = "CLIMB TO FLOOR %d" % (pad_floor + 1)
 
 
 # ------------------------------------------------------------------ building
+
+## Four tabs on the left panel. The craft view goes into a scroll container (it outgrew the panel
+## with refine, fuse and transmute); skills and story are built in code, scrolling too.
+func _build_tabs() -> void:
+	var tab_row := _core_tab_button.get_parent()
+	_skill_tab_button = _core_tab_button.duplicate() as Button
+	_skill_tab_button.text = "Skills"
+	tab_row.add_child(_skill_tab_button)
+	_story_tab_button = _core_tab_button.duplicate() as Button
+	_story_tab_button.text = "Story"
+	tab_row.add_child(_story_tab_button)
+	var craft_scroll := _wrap_in_scroll(_craft_view)
+	_tab_views = {"core": _core_view, "craft": craft_scroll}
+	_tab_buttons = {"core": _core_tab_button, "craft": _craft_tab_button, "skills": _skill_tab_button, "story": _story_tab_button}
+	for id in _tab_buttons:
+		_tab_buttons[id].pressed.connect(show_tab.bind(id))
+
+
+func _wrap_in_scroll(view: Control) -> ScrollContainer:
+	var scroll := ScrollContainer.new()
+	scroll.name = view.name + "Scroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.visible = view.visible
+	var parent := view.get_parent()
+	var index := view.get_index()
+	parent.remove_child(view)
+	parent.add_child(scroll)
+	parent.move_child(scroll, index)
+	scroll.add_child(view)
+	view.visible = true
+	view.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return scroll
+
+
+func _new_scroll_view(view_name: String) -> VBoxContainer:
+	var view := VBoxContainer.new()
+	view.name = view_name
+	view.add_theme_constant_override("separation", 6)
+	view.visible = false
+	_core_view.get_parent().add_child(view)
+	return view
+
+
+func _build_upgrade_section() -> void:
+	_craft_view.add_child(HSeparator.new())
+	_craft_view.add_child(_heading("UPGRADE THE SELECTED ITEM"))
+	_upgrade_title = _small_label("", 13)
+	_craft_view.add_child(_upgrade_title)
+	_refine_button = _action_button(_on_refine_pressed)
+	_refine_button.tooltip_text = "Refine: raise the mark by one for credits and parts. Marks above III open when the Sentinel falls."
+	_fuse_button = _action_button(_on_fuse_pressed)
+	_fuse_button.tooltip_text = "Fuse: three unlocked items of one slot and rarity become one of the next rarity. The selected item keeps its base, mark and place and rolls fresh affixes; the two lowest-mark partners are used up."
+	_transmute_button = _action_button(_on_transmute_pressed)
+	_transmute_button.tooltip_text = "Transmute: a Legendary core turns an Epic into its base's Legendary, affixes and mark kept. Legendary cores come from the Signal Tower's top, once per tier."
+
+
+func _action_button(handler: Callable) -> Button:
+	var button := Button.new()
+	button.custom_minimum_size = Vector2(0, 32)
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.clip_text = true
+	button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	button.add_theme_font_size_override("font_size", 12)
+	button.pressed.connect(handler)
+	_craft_view.add_child(button)
+	return button
+
+
+func _build_skills_view() -> void:
+	var view := _new_scroll_view("SkillsView")
+	_skill_tab_button.tooltip_text = "Skill points come from levels (experience is every credit earned from kills and clears) and from each boss's first kill. Respec is free here."
+	_skill_header = _small_label("", 13)
+	view.add_child(_skill_header)
+	_respec_button = Button.new()
+	_respec_button.custom_minimum_size = Vector2(0, 30)
+	_respec_button.add_theme_font_size_override("font_size", 12)
+	_respec_button.pressed.connect(_on_respec_pressed)
+	view.add_child(_respec_button)
+	var columns := HBoxContainer.new()
+	columns.add_theme_constant_override("separation", 4)
+	for tree in Skills.TREES:
+		var column := VBoxContainer.new()
+		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		column.custom_minimum_size = Vector2(100, 0)
+		column.add_theme_constant_override("separation", 3)
+		var title := _heading(String(Skills.TREE_NAMES[String(tree)]).to_upper())
+		title.tooltip_text = String(Skills.TREE_THEMES.get(String(tree), ""))
+		title.mouse_filter = Control.MOUSE_FILTER_PASS
+		column.add_child(title)
+		for node in Skills.nodes_of(tree):
+			var button := Button.new()
+			# One line, clipped: wrapping inside a column that starts at no width made each button
+			# as tall as its letters.
+			button.custom_minimum_size = Vector2(0, 34)
+			button.toggle_mode = true
+			button.clip_text = true
+			button.add_theme_font_size_override("font_size", 11)
+			button.pressed.connect(_on_skill_pressed.bind(node.id))
+			button.mouse_entered.connect(_show_skill_detail.bind(node.id))
+			column.add_child(button)
+			_skill_buttons[String(node.id)] = button
+		columns.add_child(column)
+	view.add_child(columns)
+	_skill_detail = _small_label("Point at a node to read it. Each tree opens tier by tier: two points in a tree open its next tier, and the capstone needs the other eight.", 12)
+	_skill_detail.add_theme_color_override("font_color", Color(0.8, 0.86, 0.92))
+	view.add_child(_skill_detail)
+	_tab_views["skills"] = _wrap_in_scroll(view)
+
+
+func _show_skill_detail(id: StringName) -> void:
+	var definition := Skills.get_definition(id)
+	if definition == null:
+		return
+	var reason := Progression.skill_block_reason(id)
+	var state := "Taken" if Progression.has_skill(id) else (reason if reason != "" else "Open: click to take (1 point)")
+	_skill_detail.text = "%s  ·  %s\n%s" % [definition.display_name, state, definition.description]
+
+
+func _build_story_view() -> void:
+	var view := _new_scroll_view("StoryView")
+	_story_tab_button.tooltip_text = "VERA's lines and the logs you have found. Nothing here gates progress."
+	_story_list = VBoxContainer.new()
+	_story_list.add_theme_constant_override("separation", 8)
+	view.add_child(_story_list)
+	_tab_views["story"] = _wrap_in_scroll(view)
 
 func _build_rarity_styles() -> void:
 	for rarity in Items.RARITY_COLORS.size():
@@ -375,7 +584,7 @@ func _refresh_slots() -> void:
 			button.text = "%s\n%s\n(default)" % [slot.display_name.to_upper(), default.display_name if default else "Empty"]
 			button.add_theme_color_override("font_color", DEFAULT_COLOR)
 			button.tooltip_text = slot.summary + ("\n" + default.description if default else "")
-	_gunsmith_blurb.text = "%d of 7 slots open. Drops: 1 in 12 kills Common, 1 in 50 Uncommon, an Uncommon per first clear; heavies and shield bearers drop Rares, bosses an Epic." % open_count
+	_gunsmith_blurb.text = "%d of %d slots open. Drops: 1 in 12 kills Common, 1 in 50 Uncommon, an Uncommon per first clear; heavies, shield bearers and turrets drop Rares, bosses an Epic." % [open_count, _slot_buttons.size()]
 
 
 func _refresh_inventory() -> void:
@@ -453,6 +662,8 @@ func _item_lines(item: Dictionary) -> PackedStringArray:
 					behaviours.append("%d-round bursts" % int(base.behaviours[key]))
 		if not effects.is_empty() or not behaviours.is_empty():
 			lines.append("Base: " + ", ".join(effects + behaviours))
+	if base and Items.is_legendary(item) and base.has_legendary():
+		lines.append("Legendary · %s: %s" % [base.legendary_name, base.legendary_description])
 	for affix_line in Items.affix_lines(item):
 		lines.append(affix_line)
 	if item.get("affixes", []).is_empty():
@@ -584,7 +795,7 @@ func _refresh_waves() -> void:
 			", paid again on replay" if Progression.is_wave_cleared(wave.number) else ""]
 	_start_button.text = "START WAVE %d" % selected_wave
 	if Progression.highest_cleared_wave >= WaveRunner.WAVE_COUNT:
-		_wave_note.text = "All %d waves cleared. Replay any wave for the same bonus (replays drop Common and Uncommon only); more waves come with the next milestone." % WaveRunner.WAVE_COUNT
+		_wave_note.text = "All %d waves cleared and the Core Guardian is down. Replay any wave for the same bonus (replays drop Common and Uncommon only); Reforge arrives in a later milestone." % WaveRunner.WAVE_COUNT
 	else:
 		_wave_note.text = "Clear a wave to unlock the next. Replaying a cleared wave pays the same bonus but drops Common and Uncommon loot only."
 
@@ -601,7 +812,21 @@ func _refresh_areas() -> void:
 					button.text = "%s  ·  %d extracted, best %d cores" % [area["name"], int(yard["extractions"]), int(yard["best_cores"])]
 				else:
 					button.text = "%s  ·  open  ·  a Rare per extraction" % area["name"]
-			button.disabled = false
+			elif area["id"] == "foundry":
+				var foundry := Progression.foundry_state()
+				if Progression.is_foundry_spent():
+					button.text = "%s  ·  spent until you play a wave" % area["name"]
+				elif int(foundry["clears"]) > 0:
+					button.text = "%s  ·  %d cleared, %d untouched" % [area["name"], int(foundry["clears"]), int(foundry["perfect"])]
+				else:
+					button.text = "%s  ·  open  ·  the Burst receiver waits inside" % area["name"]
+			elif area["id"] == "signal_tower":
+				var tower := Progression.tower_state()
+				if int(tower["best_floor"]) > 0:
+					button.text = "%s  ·  best floor %d / 10, top %d times" % [area["name"], int(tower["best_floor"]), int(tower["clears"])]
+				else:
+					button.text = "%s  ·  open  ·  ten floors" % area["name"]
+			button.disabled = Progression.area_block_reason(area["id"]) != ""
 		else:
 			button.text = "%s  ·  locked until wave %d" % [area["name"], gate]
 			button.disabled = true
@@ -683,7 +908,106 @@ func _refresh_craft() -> void:
 				button.disabled = blocked != ""
 				var line: String = lines[i] if i < lines.size() else ""
 				button.tooltip_text = "%s\n%s" % [line, blocked if blocked != "" else "Replaces this affix with a fresh one; the others stay."]
+	_refresh_upgrade()
 	_craft_message_label.text = craft_message
+
+
+func _refresh_upgrade() -> void:
+	var found := Progression.locate(selected_uid)
+	if found.is_empty():
+		_upgrade_title.text = "Select an item to refine, fuse or transmute it."
+		for button in [_refine_button, _fuse_button, _transmute_button]:
+			button.visible = false
+		return
+	var item: Dictionary = found["item"]
+	var mark := int(item.get("mark", Items.MIN_MARK))
+	_upgrade_title.text = "%s  ·  %s  ·  mark %s of %s" % [Items.display_name(item), Items.rarity_name(item),
+		Items.mark_numeral(mark), Items.mark_numeral(Progression.mark_cap())]
+	for button in [_refine_button, _fuse_button, _transmute_button]:
+		button.visible = true
+	var refine_reason := Progression.refine_block_reason(selected_uid)
+	if mark < Items.MAX_MARK:
+		var cost := Crafting.refine_cost(mark + 1)
+		var parts := Crafting.discounted(cost["parts"], Progression.craft_discount())
+		var price := "%d credits" % int(cost["credits"]) if int(cost["credits"]) > 0 else "free"
+		if not parts.is_empty():
+			price += " + " + Crafting.describe_cost(parts)
+		_refine_button.text = "Refine to mark %s  ·  %s" % [Items.mark_numeral(mark + 1), price if refine_reason == "" else refine_reason]
+	else:
+		_refine_button.text = "Refine  ·  %s" % refine_reason
+	_refine_button.disabled = refine_reason != ""
+	var fuse_reason := Progression.fuse_block_reason(selected_uid)
+	var rarity := int(item.get("rarity", 0))
+	if fuse_reason == "":
+		_fuse_button.text = "Fuse three into %s  ·  %s" % [Items.RARITY_NAMES[rarity + 1],
+			Crafting.describe_cost(Crafting.discounted(Crafting.fuse_cost(rarity), Progression.craft_discount()))]
+	else:
+		_fuse_button.text = "Fuse  ·  %s" % fuse_reason
+	_fuse_button.disabled = fuse_reason != ""
+	var transmute_reason := Progression.transmute_block_reason(selected_uid)
+	var base := Items.get_attachment(item.get("base", ""))
+	if transmute_reason == "" and base != null:
+		_transmute_button.text = "Transmute into %s  ·  %s" % [base.legendary_name, Crafting.describe_cost(Crafting.TRANSMUTE_COST)]
+	else:
+		_transmute_button.text = "Transmute  ·  %s" % transmute_reason
+	_transmute_button.disabled = transmute_reason != ""
+
+
+func _refresh_skills() -> void:
+	if _skill_header == null:
+		return
+	var progress := Skills.level_progress(Progression.xp)
+	var level := Progression.player_level()
+	var available := Progression.skill_points_available()
+	_skill_header.text = "Level %d  ·  %d / %d experience to the next  ·  %d point%s to spend  (levels and boss first kills)" % [
+		level, progress.x, progress.y, available, "" if available == 1 else "s"]
+	_respec_button.text = "Respec (free)  ·  refund %d point%s" % [Skills.spent(Progression.data["skills"]), "" if Skills.spent(Progression.data["skills"]) == 1 else "s"]
+	_respec_button.disabled = Progression.data["skills"].is_empty()
+	for id in _skill_buttons:
+		var button: Button = _skill_buttons[id]
+		var definition := Skills.get_definition(StringName(id))
+		var taken := Progression.has_skill(StringName(id))
+		var reason := Progression.skill_block_reason(StringName(id))
+		button.text = ("★ " if definition.capstone else "") + definition.display_name
+		button.button_pressed = taken
+		button.disabled = not taken and reason != ""
+		button.tooltip_text = "%s\n%s" % [definition.description, "Taken" if taken else (reason if reason != "" else "Click to take (1 point)")]
+		if taken:
+			button.add_theme_color_override("font_color", Color(0.75, 1.0, 0.75))
+		else:
+			button.remove_theme_color_override("font_color")
+
+
+func _refresh_story() -> void:
+	if _story_list == null:
+		return
+	for child in _story_list.get_children():
+		child.queue_free()
+	var seen := Progression.story_seen()
+	if seen.is_empty():
+		_story_list.add_child(_small_label("Nothing yet. VERA talks after wave clears and boss fights; logs turn up in the side areas.", 13))
+		return
+	# Newest first: the last thing that happened is what the player came here to reread.
+	for i in range(seen.size() - 1, -1, -1):
+		var trigger: String = seen[i]
+		var title := _heading(_story_title(trigger))
+		title.add_theme_font_size_override("font_size", 13)
+		_story_list.add_child(title)
+		for line in Story.lines_for(trigger):
+			var label := _small_label("%s: %s" % [line[0], line[1]], 12)
+			_story_list.add_child(label)
+
+
+func _story_title(trigger: String) -> String:
+	if trigger.begins_with("wave_"):
+		return "WAVE %s CLEARED" % trigger.get_slice("_", 1)
+	if trigger.begins_with("boss_"):
+		return "BOSS"
+	if Story.is_log(trigger):
+		return "LOG FOUND"
+	if trigger.begins_with("guardian_phase_"):
+		return "CORE GUARDIAN"
+	return trigger.replace("_", " ").to_upper()
 
 
 func _describe_stat(tuning: CoreTuningDefinition, stats: WeaponStats) -> String:
@@ -730,11 +1054,14 @@ func _on_wave_pressed(number: int) -> void:
 
 
 func _on_start_pressed() -> void:
+	if pad_mode:
+		climb_requested.emit()
+		return
 	start_wave_requested.emit(selected_wave)
 
 
 func _on_area_pressed(area_id: String) -> void:
-	if Progression.is_area_open(area_id):
+	if Progression.area_block_reason(area_id) == "":
 		area_requested.emit(area_id)
 
 
@@ -829,6 +1156,46 @@ func _on_reroll_pressed(index: int) -> void:
 		var after := Items.affix_lines(found["item"])
 		craft_message = "%s  →  %s" % [before[index], after[index]]
 		Progression.save()
+	refresh()
+
+
+func _on_refine_pressed() -> void:
+	var before := Progression.locate(selected_uid)
+	if before.is_empty():
+		return
+	if Progression.refine(selected_uid):
+		var item: Dictionary = Progression.locate(selected_uid)["item"]
+		craft_message = "Refined %s to mark %s" % [Items.display_name(item), Items.mark_numeral(int(item.get("mark", 1)))]
+		Progression.save()
+	refresh()
+
+
+func _on_fuse_pressed() -> void:
+	var item := Progression.fuse(selected_uid)
+	if not item.is_empty():
+		craft_message = "Fused into %s  ·  %s" % [Items.display_name(item), Items.rarity_name(item)]
+		Progression.save()
+	refresh()
+
+
+func _on_transmute_pressed() -> void:
+	if Progression.transmute(selected_uid):
+		var item: Dictionary = Progression.locate(selected_uid)["item"]
+		craft_message = "Transmuted: %s" % Items.display_name(item)
+		Progression.save()
+	refresh()
+
+
+func _on_skill_pressed(id: StringName) -> void:
+	if Progression.take_skill(id):
+		Progression.save()
+	refresh()
+	_show_skill_detail(id)
+
+
+func _on_respec_pressed() -> void:
+	Progression.respec_skills()
+	Progression.save()
 	refresh()
 
 

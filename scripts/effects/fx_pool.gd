@@ -43,8 +43,11 @@ const MAX_BURSTS := 8
 const MAX_SOUNDS := 8
 const MAX_RINGS := 2
 const MAX_BLASTS := 8
-## Name tags that follow a node (floor drops); as many as the game's drop reserve.
-const MAX_LABELS := 12
+## Cryo shatters: the blast's sphere in frost blue.
+const MAX_SHATTERS := 6
+## Name tags that follow a node: the floor drops (as many as the game's drop reserve) and the
+## Scanner's turret markers.
+const MAX_LABELS := 16
 const TRACER_COLOR := Color(1.0, 0.9, 0.55, 0.7)
 const IMPACT_COLOR := Color(1.0, 0.85, 0.5)
 ## Where warm-up draws its samples: just under the floor in front of the camera, inside the view
@@ -90,6 +93,7 @@ var _burst_mesh := BoxMesh.new()
 var _ring_mesh := TorusMesh.new()
 var _blast_mesh := SphereMesh.new()
 var _blast_material := StandardMaterial3D.new()
+var _shatter_material := StandardMaterial3D.new()
 ## Holds every 2D label; the first child of the HUD's layer once set_label_parent ran (drawn under
 ## the HUD's own items), otherwise under a canvas layer of the pool's own.
 var _label_root := Control.new()
@@ -106,6 +110,7 @@ var _bursts: Array[Entry] = []
 var _sounds: Array[Entry] = []
 var _rings: Array[Entry] = []
 var _blasts: Array[Entry] = []
+var _shatters: Array[Entry] = []
 
 
 func _ready() -> void:
@@ -136,6 +141,10 @@ func _ready() -> void:
 	_blast_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_blast_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	_blast_material.albedo_color = BLAST_COLOR
+	_shatter_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_shatter_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_shatter_material.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_shatter_material.albedo_color = StatusEffects.SHATTER_COLOR
 	_label_root.name = "WorldLabels"
 	_label_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_label_root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -194,7 +203,7 @@ static func warm_up_scene_paths() -> Array[String]:
 
 func active_count() -> int:
 	var count := 0
-	for pool in [_tracers, _impacts, _numbers, _labels, _bursts, _sounds, _rings, _blasts]:
+	for pool in [_tracers, _impacts, _numbers, _labels, _bursts, _sounds, _rings, _blasts, _shatters]:
 		for entry in pool:
 			if entry.active:
 				count += 1
@@ -204,7 +213,7 @@ func active_count() -> int:
 ## Every pooled node, in the 3D pools and among the labels.
 func pooled_count() -> int:
 	var count := 0
-	for pool in [_tracers, _impacts, _numbers, _labels, _bursts, _sounds, _rings, _blasts]:
+	for pool in [_tracers, _impacts, _numbers, _labels, _bursts, _sounds, _rings, _blasts, _shatters]:
 		count += pool.size()
 	return count
 
@@ -314,6 +323,16 @@ func blast(position: Vector3, radius: float) -> void:
 	node.scale = Vector3.ONE * entry.size * 0.25
 
 
+## A frost-blue sphere that swells to `radius` and vanishes: a Cryo shatter.
+func shatter(position: Vector3, radius: float) -> void:
+	var entry := _acquire(_shatters, MAX_SHATTERS, _make_shatter)
+	entry.life = BLAST_TIME
+	entry.size = maxf(radius, 0.1)
+	var node: Node3D = entry.node
+	node.global_position = position
+	node.scale = Vector3.ONE * entry.size * 0.25
+
+
 ## Builds every pool to its cap, then draws one of every effect, projectile, enemy and drop for a
 ## few frames so their shaders compile now, not in the first wave. Everything sits under the floor
 ## in front of the camera. With `gun`, the first frames are drawn with its muzzle light reaching
@@ -333,6 +352,7 @@ func warm_up(camera: Camera3D, gun: Pistol = null, new_label_parent: Node = null
 	_fill(_sounds, MAX_SOUNDS, _make_sound)
 	_fill(_rings, MAX_RINGS, _make_ring)
 	_fill(_blasts, MAX_BLASTS, _make_blast)
+	_fill(_shatters, MAX_SHATTERS, _make_shatter)
 	LootDrop.warm_up_materials()
 	var forward := -camera.global_basis.z
 	forward.y = 0.0
@@ -344,7 +364,8 @@ func warm_up(camera: Camera3D, gun: Pistol = null, new_label_parent: Node = null
 	burst(spot, Color.WHITE)
 	ring(spot, 1.0, Color.WHITE, 0.3)
 	blast(spot, 0.4)
-	for entry in _blasts:
+	shatter(spot, 0.4)
+	for entry in _blasts + _shatters:
 		entry.life = INF # held for the warm-up's frames, released with the rest
 	# Every digit at both sizes goes into the font atlas now; the labels draw invisibly.
 	damage_number(spot, 1234567890, false)
@@ -389,7 +410,7 @@ func warm_up(camera: Camera3D, gun: Pistol = null, new_label_parent: Node = null
 			extra.queue_free()
 	if is_instance_valid(projectiles):
 		projectiles.hide_warm_up_sample()
-	for pool in [_tracers, _impacts, _numbers, _labels, _bursts, _sounds, _rings, _blasts]:
+	for pool in [_tracers, _impacts, _numbers, _labels, _bursts, _sounds, _rings, _blasts, _shatters]:
 		for entry in pool:
 			_release(entry)
 
@@ -449,7 +470,7 @@ func _process(delta: float) -> void:
 				node.scale = Vector3(grown, RING_START_SCALE, grown)
 				var material: StandardMaterial3D = node.material_override
 				material.albedo_color.a = RING_ALPHA * (1.0 - t)
-	for entry in _blasts:
+	for entry in _blasts + _shatters:
 		if entry.active:
 			if _age(entry, delta):
 				_release(entry)
@@ -622,6 +643,14 @@ func _make_blast() -> Node:
 	var node := MeshInstance3D.new()
 	node.mesh = _blast_mesh
 	node.material_override = _blast_material
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return node
+
+
+func _make_shatter() -> Node:
+	var node := MeshInstance3D.new()
+	node.mesh = _blast_mesh
+	node.material_override = _shatter_material
 	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return node
 

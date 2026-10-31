@@ -28,3 +28,7 @@ is_default = false
 unlock_wave = 0
 gate_text = ""
 visual = {"slide_color": Color(0.45, 0.3, 0.12, 1)}
+legendary_name = "Sunburst"
+legendary_description = "Every blast sets what it hits burning, as Incendiary rounds do."
+legendary_modifiers = Array[ExtResource("2_mod")]([])
+legendary_behaviours = {"blast_burn": true}

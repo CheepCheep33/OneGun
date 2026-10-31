@@ -12,20 +12,27 @@ signal inventory_changed
 ## An item arrived. `destination` is "inventory", "overflow", "dismantled" (both full, turned to
 ## parts) or "bumped" (it took a lesser item's place in the tray).
 signal item_received(item: Dictionary, destination: String)
+## Experience crossed into a new player level (one skill point each).
+signal level_up(level: int)
+signal skills_changed
 
 const PISTOL_BASE := preload("res://data/weapons/pistol_base.tres")
 ## Per-kill credits and enemy health step up by this much per wave tier (5 waves each).
 const TIER_STEP := 1.6
+const REFORGE_INCOME_STEP := 4.0
 const WAVES_PER_TIER := 5
 const INVENTORY_SIZE := 40
 const OVERFLOW_SIZE := 20
 ## Side areas and the wave whose first clear opens them (the Scrapyard opens when the Warden falls).
-const AREA_GATES := {"firing_range": 2, "scrapyard": 5}
+const AREA_GATES := {"firing_range": 2, "scrapyard": 5, "foundry": 10, "signal_tower": 15}
+## Marks IV and V open when the Sentinel falls (plan: Sentinel unlocks mark IV and V).
+const HIGH_MARK_WAVE := 15
+const LOW_MARK_CAP := 3
 ## Scrapyard extraction: parts per scrap core carried out, and a Rare every time (plan: Scrapyard).
 const SCRAP_PER_CORE := 2
 const CORES_PER_ALLOY := 3
 const CORES_PER_CIRCUIT := 8
-const SCRAPYARD_LOG_FLAG := "scrapyard_log_1"
+const SCRAPYARD_LOG_FLAG := "log_scrapyard_1"
 
 var data: Dictionary = SaveFile.fresh()
 ## True when a save existed when the game started, so the bench can greet a returning player.
@@ -150,20 +157,27 @@ static func tier_of_wave(wave: int) -> int:
 	return maxi(wave - 1, 0) / WAVES_PER_TIER
 
 
-## Multiplier for per-kill credits and enemy health at a wave, from the wave tier and Reforge tier.
+## Multiplier for enemy health at a wave, from the wave tier and Reforge tier.
 func reward_multiplier(wave: int) -> float:
+	return pow(TIER_STEP, tier_of_wave(wave)) * pow(WeaponStats.REFORGE_STEP, tier)
+
+
+## Multiplier for per-kill credits: the wave tier, and a Reforge step a little steeper than the
+## enemies' (REFORGE_INCOME_STEP), so the first waves after a Reforge buy back the core levels in
+## about ten minutes now that a first run is twenty waves long (Reforge simulation, Milestone 5).
+func income_multiplier(wave: int) -> float:
 	return pow(TIER_STEP, tier_of_wave(wave)) * bonus_multiplier()
 
 
-## Completion bonuses scale with the Reforge tier only, so they stay worth about three waves of
-## kill income at every tier.
+## Completion bonuses scale with the Reforge tier only, by the same step as kill income.
 func bonus_multiplier() -> float:
-	return pow(WeaponStats.REFORGE_STEP, tier)
+	return pow(REFORGE_INCOME_STEP, tier)
 
 
 func record_kill(credits_paid: int) -> void:
 	data["records"]["kills"] = int(data["records"]["kills"]) + 1
 	add_credits(credits_paid)
+	add_xp(credits_paid)
 
 
 ## Pays the completion bonus and marks the wave. Pays the same on replay (the plan's replay rule).
@@ -175,6 +189,7 @@ func record_wave_cleared(wave: int, bonus: int, duration: float) -> bool:
 		data["waves"]["highest_cleared"] = maxi(highest_cleared_wave, wave)
 	data["records"]["waves_cleared"] = int(data["records"]["waves_cleared"]) + 1
 	add_credits(bonus, "wave_%d_bonus" % wave)
+	add_xp(bonus)
 	PlaytestLog.event("wave_cleared", {"wave": wave, "first": first, "seconds": "%.1f" % duration, "bonus": bonus})
 	progress_changed.emit()
 	return first
@@ -188,6 +203,93 @@ func record_death(wave: int, duration: float) -> void:
 
 # ------------------------------------------------------------------ unlocks
 
+# ------------------------------------------------------------------ experience and skills
+
+var xp: int:
+	get:
+		return int(data["xp"])
+
+
+func player_level() -> int:
+	return Skills.level_for_xp(xp)
+
+
+## Experience comes with every credit earned from kills and clears (plan: experience from kills
+## and clears), so it scales with the wave like credits do.
+func add_xp(amount: int) -> void:
+	if amount <= 0:
+		return
+	var before := player_level()
+	data["xp"] = xp + amount
+	var after := player_level()
+	if after > before:
+		PlaytestLog.event("level_up", {"level": after})
+		level_up.emit(after)
+
+
+## One bonus skill point per boss, the first time it falls. Returns true the first time.
+func record_boss_kill(boss_id: StringName) -> bool:
+	if data["boss_kills"].has(String(boss_id)):
+		return false
+	data["boss_kills"].append(String(boss_id))
+	skills_changed.emit()
+	return true
+
+
+func skill_points_total() -> int:
+	return player_level() - 1 + data["boss_kills"].size()
+
+
+func skill_points_available() -> int:
+	return skill_points_total() - Skills.spent(data["skills"])
+
+
+func has_skill(id: StringName) -> bool:
+	return int(data["skills"].get(String(id), 0)) > 0
+
+
+func skill_block_reason(id: StringName) -> String:
+	return Skills.block_reason(id, data["skills"], skill_points_available())
+
+
+func take_skill(id: StringName) -> bool:
+	if skill_block_reason(id) != "":
+		return false
+	data["skills"][String(id)] = 1
+	PlaytestLog.event("skill", {"id": String(id), "points_left": skill_points_available()})
+	skills_changed.emit()
+	return true
+
+
+## Free respec (plan: respec is free at the bench).
+func respec_skills() -> void:
+	if data["skills"].is_empty():
+		return
+	data["skills"].clear()
+	PlaytestLog.event("respec", {})
+	skills_changed.emit()
+
+
+func player_effects() -> Dictionary:
+	return Skills.player_effects(data["skills"])
+
+
+# ------------------------------------------------------------------ unlocks
+
+## Progression unlocks set by side-area clears: "foundry" (Burst), "signal_tower" (Charge),
+## "signal_tower_top" (Overflow).
+func has_unlock(flag: String) -> bool:
+	return flag == "" or data["unlocks"].has(flag)
+
+
+func add_unlock(flag: String) -> bool:
+	if flag == "" or data["unlocks"].has(flag):
+		return false
+	data["unlocks"].append(flag)
+	progress_changed.emit()
+	return true
+
+
 ## A slot is open once its gate wave has been cleared (0 = open from the start).
 func is_slot_open(slot_id: StringName) -> bool:
 	var slot := Items.get_slot(slot_id)
@@ -197,6 +299,8 @@ func is_slot_open(slot_id: StringName) -> bool:
 ## A base is unlocked once its slot is open and its own gate wave (if any) has been cleared.
 func is_base_unlocked(base: AttachmentDefinition) -> bool:
 	if base == null or not is_slot_open(base.slot):
+		return false
+	if not has_unlock(base.unlock_flag):
 		return false
 	return base.unlock_wave <= 0 or is_wave_cleared(base.unlock_wave)
 
@@ -214,6 +318,16 @@ func droppable_bases(slot: StringName = &"") -> Array[AttachmentDefinition]:
 
 func is_area_open(area_id: String) -> bool:
 	return AREA_GATES.has(area_id) and is_wave_cleared(int(AREA_GATES[area_id]))
+
+
+## Why an open area cannot be entered right now ("" when it can): the Foundry's one attempt per
+## intermission.
+func area_block_reason(area_id: String) -> String:
+	if not is_area_open(area_id):
+		return "Opens when wave %d is cleared" % int(AREA_GATES.get(area_id, 0))
+	if area_id == "foundry" and is_foundry_spent():
+		return "One attempt per intermission: play a wave first"
+	return ""
 
 
 # ------------------------------------------------------------------ inventory
@@ -405,9 +519,22 @@ func craft_block_reason(base_id: StringName, rarity: int) -> String:
 		return "Legendaries come from a Legendary core"
 	if data["inventory"].size() >= INVENTORY_SIZE and data["overflow"].size() >= OVERFLOW_SIZE:
 		return "Inventory and tray are full"
-	if not Crafting.can_afford(data["parts"], Crafting.craft_cost(rarity)):
-		return "Needs " + Crafting.describe_cost(Crafting.craft_cost(rarity))
+	if not Crafting.can_afford(data["parts"], craft_cost(rarity)):
+		return "Needs " + Crafting.describe_cost(craft_cost(rarity))
 	return ""
+
+
+## The crafting table's prices after the Tinkerer skill.
+func craft_cost(rarity: int) -> Dictionary:
+	return Crafting.discounted(Crafting.craft_cost(rarity), craft_discount())
+
+
+func reroll_cost(item: Dictionary) -> Dictionary:
+	return Crafting.discounted(Crafting.reroll_cost(item), craft_discount())
+
+
+func craft_discount() -> float:
+	return float(player_effects().get("craft_discount", 0.0))
 
 
 ## Makes the chosen base at the chosen rarity with rolled affixes from the loot stream and pays its
@@ -415,7 +542,7 @@ func craft_block_reason(base_id: StringName, rarity: int) -> String:
 func craft(base_id: StringName, rarity: int) -> Dictionary:
 	if craft_block_reason(base_id, rarity) != "":
 		return {}
-	var cost := Crafting.craft_cost(rarity)
+	var cost := craft_cost(rarity)
 	Crafting.pay(data["parts"], cost)
 	var item := Loot.make_item(Items.get_attachment(base_id), rarity, loot_rng)
 	_store_loot_state()
@@ -433,7 +560,7 @@ func reroll_block_reason(uid: int, index: int) -> String:
 	var item: Dictionary = found["item"]
 	if index < 0 or index >= item.get("affixes", []).size():
 		return "No such affix"
-	var cost := Crafting.reroll_cost(item)
+	var cost := reroll_cost(item)
 	if not Crafting.can_afford(data["parts"], cost):
 		return "Needs " + Crafting.describe_cost(cost)
 	return ""
@@ -445,7 +572,7 @@ func reroll_affix(uid: int, index: int) -> bool:
 	if reroll_block_reason(uid, index) != "":
 		return false
 	var item: Dictionary = locate(uid)["item"]
-	var cost := Crafting.reroll_cost(item)
+	var cost := reroll_cost(item)
 	var before := String(item["affixes"][index]["id"])
 	if not Crafting.reroll(item, index, loot_rng):
 		return false
@@ -454,6 +581,138 @@ func reroll_affix(uid: int, index: int) -> bool:
 	data["records"]["rerolled"] = int(data["records"]["rerolled"]) + 1
 	PlaytestLog.event("reroll", {"base": item.get("base", ""), "from": before, "to": item["affixes"][index]["id"],
 		"cost": Crafting.describe_cost(cost)})
+	inventory_changed.emit()
+	return true
+
+
+## The highest mark refining can reach right now: III until the Sentinel falls, then V.
+func mark_cap() -> int:
+	return Items.MAX_MARK if is_wave_cleared(HIGH_MARK_WAVE) else LOW_MARK_CAP
+
+
+## Why the item cannot be refined now, or "".
+func refine_block_reason(uid: int) -> String:
+	var found := locate(uid)
+	if found.is_empty():
+		return "Select an item"
+	var mark := int(found["item"].get("mark", Items.MIN_MARK))
+	if mark >= Items.MAX_MARK:
+		return "Already mark V"
+	if mark >= mark_cap():
+		return "Marks IV and V open when the Sentinel falls (wave 15)"
+	var cost := Crafting.refine_cost(mark + 1)
+	var parts := Crafting.discounted(cost["parts"], craft_discount())
+	if credits < int(cost["credits"]):
+		return "Needs %d credits" % int(cost["credits"])
+	if not parts.is_empty() and not Crafting.can_afford(data["parts"], parts):
+		return "Needs " + Crafting.describe_cost(parts)
+	return ""
+
+
+## Raises an item's mark by one for credits plus parts (plan: Refine). Works on fitted items too.
+func refine(uid: int) -> bool:
+	if refine_block_reason(uid) != "":
+		return false
+	var item: Dictionary = locate(uid)["item"]
+	var target := int(item.get("mark", Items.MIN_MARK)) + 1
+	var cost := Crafting.refine_cost(target)
+	var parts := Crafting.discounted(cost["parts"], craft_discount())
+	data["credits"] = credits - int(cost["credits"])
+	Crafting.pay(data["parts"], parts)
+	item["mark"] = target
+	data["records"]["refined"] = int(data["records"]["refined"]) + 1
+	PlaytestLog.event("refine", {"base": item.get("base", ""), "mark": target, "credits": int(cost["credits"])})
+	credits_changed.emit(credits)
+	inventory_changed.emit()
+	return true
+
+
+## The two items a fuse of `uid` would consume: unlocked, unfitted items of the same slot and
+## rarity, lowest mark first, then oldest. Fewer than two means it cannot fuse.
+func fuse_partners(uid: int) -> Array:
+	var found := locate(uid)
+	if found.is_empty():
+		return []
+	var item: Dictionary = found["item"]
+	var slot := Items.slot_of(item)
+	var candidates := []
+	for list_name in ["inventory", "overflow"]:
+		for other in data[list_name]:
+			if int(other.get("uid", -1)) == uid or bool(other.get("locked", false)):
+				continue
+			if Items.slot_of(other) == slot and int(other.get("rarity", 0)) == int(item.get("rarity", 0)):
+				candidates.append(other)
+	candidates.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if int(a.get("mark", 1)) != int(b.get("mark", 1)):
+			return int(a.get("mark", 1)) < int(b.get("mark", 1))
+		return int(a.get("uid", 0)) < int(b.get("uid", 0)))
+	return candidates.slice(0, 2)
+
+
+func fuse_block_reason(uid: int) -> String:
+	var found := locate(uid)
+	if found.is_empty():
+		return "Select an item"
+	var rarity := int(found["item"].get("rarity", 0))
+	if not Crafting.is_fusable_rarity(rarity):
+		return "Only Commons, Uncommons and Rares fuse"
+	if fuse_partners(uid).size() < 2:
+		var slot := Items.get_slot(Items.slot_of(found["item"]))
+		return "Needs two more unlocked %s %s items" % [Items.RARITY_NAMES[rarity], slot.display_name if slot else ""]
+	var cost := Crafting.discounted(Crafting.fuse_cost(rarity), craft_discount())
+	if not Crafting.can_afford(data["parts"], cost):
+		return "Needs " + Crafting.describe_cost(cost)
+	return ""
+
+
+## Three items of one rarity and slot become one of the next rarity (plan: Fuse): the selected
+## item keeps its base, mark and place, rolls fresh affixes at the new rarity, and its two
+## partners are consumed. Returns the item, or {} when blocked.
+func fuse(uid: int) -> Dictionary:
+	if fuse_block_reason(uid) != "":
+		return {}
+	var item: Dictionary = locate(uid)["item"]
+	var rarity := int(item.get("rarity", 0))
+	for partner in fuse_partners(uid):
+		var where := locate(int(partner["uid"]))
+		where["list"].remove_at(where["index"])
+	Crafting.pay(data["parts"], Crafting.discounted(Crafting.fuse_cost(rarity), craft_discount()))
+	var fresh := Loot.make_item(Items.get_attachment(item["base"]), rarity + 1, loot_rng)
+	_store_loot_state()
+	item["rarity"] = rarity + 1
+	item["affixes"] = fresh["affixes"]
+	item["rerolls"] = 0
+	data["records"]["fused"] = int(data["records"]["fused"]) + 1
+	PlaytestLog.event("fuse", {"base": item.get("base", ""), "rarity": rarity + 1})
+	inventory_changed.emit()
+	return item
+
+
+func transmute_block_reason(uid: int) -> String:
+	var found := locate(uid)
+	if found.is_empty():
+		return "Select an item"
+	var item: Dictionary = found["item"]
+	var base := Items.get_attachment(item.get("base", ""))
+	if int(item.get("rarity", 0)) != Items.Rarity.EPIC:
+		return "Transmute turns an Epic into its Legendary"
+	if base == null or not base.has_legendary():
+		return "%s has no Legendary" % (base.display_name if base else "This base")
+	if not Crafting.can_afford(data["parts"], Crafting.TRANSMUTE_COST):
+		return "Needs " + Crafting.describe_cost(Crafting.TRANSMUTE_COST)
+	return ""
+
+
+## A Legendary core plus an Epic becomes that base's Legendary unique, affixes and mark kept
+## (plan: Transmute).
+func transmute(uid: int) -> bool:
+	if transmute_block_reason(uid) != "":
+		return false
+	var item: Dictionary = locate(uid)["item"]
+	Crafting.pay(data["parts"], Crafting.TRANSMUTE_COST)
+	item["rarity"] = Items.Rarity.LEGENDARY
+	data["records"]["transmuted"] = int(data["records"]["transmuted"]) + 1
+	PlaytestLog.event("transmute", {"base": item.get("base", "")})
 	inventory_changed.emit()
 	return true
 
@@ -468,7 +727,8 @@ func _add_parts(amounts: Dictionary) -> void:
 
 ## Rolls one kill's drop from the seeded loot stream. Empty when nothing drops.
 func roll_kill_drop(definition: EnemyDefinition, is_replay: bool) -> Dictionary:
-	var item := Loot.roll_kill_drop(definition, droppable_bases(), loot_rng, is_replay)
+	var luck := float(player_effects().get("loot_luck", 0.0))
+	var item := Loot.roll_kill_drop(definition, droppable_bases(), loot_rng, is_replay, luck, legendary_drop_bases())
 	_store_loot_state()
 	if not item.is_empty():
 		data["records"]["drops"] = int(data["records"]["drops"]) + 1
@@ -486,6 +746,15 @@ func grant_item(rarity: int, slot: StringName = &"", source := "grant") -> Dicti
 	data["records"]["drops"] = int(data["records"]["drops"]) + 1
 	add_item(item, source)
 	return item
+
+
+## The bases a boss's Legendary can be: those with a unique whose slot and gate are open.
+func legendary_drop_bases() -> Array[AttachmentDefinition]:
+	var result: Array[AttachmentDefinition] = []
+	for base in Items.legendary_bases():
+		if is_base_unlocked(base):
+			result.append(base)
+	return result
 
 
 func _store_loot_state() -> void:
@@ -563,12 +832,165 @@ func record_scrapyard_extraction(cores: int, seconds: float) -> Dictionary:
 	var parts := scrapyard_parts(cores)
 	_add_parts(parts)
 	var reward := grant_item(Items.Rarity.RARE, &"", "scrapyard_extraction")
-	if first and not data["story_flags"].has(SCRAPYARD_LOG_FLAG):
-		data["story_flags"].append(SCRAPYARD_LOG_FLAG)
+	var extractions := int(state["extractions"])
+	for log_id in ["log_scrapyard_1", "log_scrapyard_3", "log_scrapyard_6"]:
+		if extractions >= int(log_id.get_slice("_", 2)):
+			fire_story(log_id)
 	PlaytestLog.event("scrapyard_extracted", {"cores": cores, "seconds": "%.1f" % seconds, "first": first})
 	inventory_changed.emit()
 	progress_changed.emit()
 	return {"parts": parts, "reward": reward, "first": first}
+
+
+# ------------------------------------------------------------------ foundry
+
+## Cores paid by every Foundry clear (Epic parts: the heat room's role is the expensive recipes).
+const FOUNDRY_CORES := 2
+## Cores paid by the Signal Tower's top floor; the Legendary core is extra, once per tier.
+const TOWER_TOP_CORES := 2
+## The Signal Tower floor whose first clear opens the Charge receiver.
+const TOWER_CHARGE_FLOOR := 5
+
+
+func foundry_state() -> Dictionary:
+	return data["areas"]["foundry"]
+
+
+## One attempt per intermission (plan): the Foundry is spent from entry until a main wave starts.
+func is_foundry_spent() -> bool:
+	return int(data["areas"]["foundry"]["spent"]) != 0
+
+
+func record_foundry_run() -> void:
+	var state: Dictionary = data["areas"]["foundry"]
+	state["runs"] = int(state["runs"]) + 1
+	state["spent"] = 1
+	progress_changed.emit()
+
+
+## A main wave started: the Foundry can be attempted again at the next intermission.
+func refresh_intermission() -> void:
+	data["areas"]["foundry"]["spent"] = 0
+
+
+## A cleared heat room: cores every time, a Rare, the Burst receiver (Rare) and its unlock on the
+## first clear, an Epic on a run without damage, and the logs. Returns
+## {"parts", "rewards": [items], "first", "perfect"}.
+func record_foundry_clear(perfect: bool, seconds: float) -> Dictionary:
+	var state: Dictionary = data["areas"]["foundry"]
+	var first := int(state["clears"]) == 0
+	state["clears"] = int(state["clears"]) + 1
+	var parts := {"cores": FOUNDRY_CORES}
+	_add_parts(parts)
+	var rewards: Array = []
+	if first:
+		add_unlock("foundry")
+		rewards.append(_grant_base(&"burst", Items.Rarity.RARE, "foundry_first_clear"))
+	else:
+		rewards.append(grant_item(Items.Rarity.RARE, &"", "foundry_clear"))
+	if perfect:
+		state["perfect"] = int(state["perfect"]) + 1
+		rewards.append(grant_item(Items.Rarity.EPIC, &"", "foundry_perfect"))
+		fire_story("log_foundry_perfect")
+	fire_story("log_foundry_1")
+	if int(state["clears"]) >= 3:
+		fire_story("log_foundry_3")
+	rewards = rewards.filter(func(item: Dictionary) -> bool: return not item.is_empty())
+	PlaytestLog.event("foundry_cleared", {"perfect": perfect, "seconds": "%.1f" % seconds, "first": first})
+	inventory_changed.emit()
+	progress_changed.emit()
+	return {"parts": parts, "rewards": rewards, "first": first, "perfect": perfect}
+
+
+## Makes an item of one base at a rarity with rolled affixes and takes it in.
+func _grant_base(base_id: StringName, rarity: int, source: String) -> Dictionary:
+	var base := Items.get_attachment(base_id)
+	if base == null:
+		return {}
+	var item := Loot.make_item(base, rarity, loot_rng)
+	_store_loot_state()
+	data["records"]["drops"] = int(data["records"]["drops"]) + 1
+	add_item(item, source)
+	return item
+
+
+# ------------------------------------------------------------------ signal tower
+
+func tower_state() -> Dictionary:
+	return data["areas"]["signal_tower"]
+
+
+func record_tower_run() -> void:
+	var state: Dictionary = data["areas"]["signal_tower"]
+	state["runs"] = int(state["runs"]) + 1
+
+
+## A tower floor cleared: the best floor, the Charge receiver at TOWER_CHARGE_FLOOR the first time,
+## the logs on floors 3, 6 and 9. Returns the items it granted (empty for most floors).
+func record_tower_floor(floor_number: int) -> Array:
+	var state: Dictionary = data["areas"]["signal_tower"]
+	state["best_floor"] = maxi(int(state["best_floor"]), floor_number)
+	var rewards: Array = []
+	if floor_number >= TOWER_CHARGE_FLOOR and add_unlock("signal_tower"):
+		rewards.append(_grant_base(&"charge", Items.Rarity.RARE, "tower_charge"))
+	if floor_number in [3, 6, 9]:
+		fire_story("log_tower_%d" % floor_number)
+	PlaytestLog.event("tower_floor", {"floor": floor_number})
+	progress_changed.emit()
+	return rewards.filter(func(item: Dictionary) -> bool: return not item.is_empty())
+
+
+## The top floor: an Epic and cores every time, the Overflow magazine (Rare) the first time, a
+## Legendary core once per Reforge tier, and the top log. Returns
+## {"parts", "rewards": [items], "first", "legendary_core"}.
+func record_tower_top(seconds: float) -> Dictionary:
+	var state: Dictionary = data["areas"]["signal_tower"]
+	var first := int(state["clears"]) == 0
+	state["clears"] = int(state["clears"]) + 1
+	var parts := {"cores": TOWER_TOP_CORES}
+	var legendary_core := int(state["core_tier"]) <= tier
+	if legendary_core:
+		state["core_tier"] = tier + 1
+		parts["legendary_cores"] = 1
+	_add_parts(parts)
+	var rewards: Array = [grant_item(Items.Rarity.EPIC, &"", "tower_top")]
+	if add_unlock("signal_tower_top"):
+		rewards.append(_grant_base(&"overflow", Items.Rarity.RARE, "tower_overflow"))
+	fire_story("log_tower_top")
+	PlaytestLog.event("tower_top", {"seconds": "%.1f" % seconds, "first": first, "legendary_core": legendary_core})
+	inventory_changed.emit()
+	progress_changed.emit()
+	return {"parts": parts, "rewards": rewards.filter(func(item: Dictionary) -> bool: return not item.is_empty()),
+		"first": first, "legendary_core": legendary_core}
+
+
+# ------------------------------------------------------------------ story
+
+## Fires a story trigger once per save: records it and queues it for the bench's Story tab.
+## Returns its lines the first time, empty after that or when the trigger has none.
+func fire_story(trigger: String) -> Array:
+	if not Story.has(trigger) or data["story_flags"].has(trigger):
+		return []
+	data["story_flags"].append(trigger)
+	data["story_queue"].append(trigger)
+	PlaytestLog.event("story", {"trigger": trigger})
+	return Story.lines_for(trigger)
+
+
+func has_seen_story(trigger: String) -> bool:
+	return data["story_flags"].has(trigger)
+
+
+## Triggers fired so far, oldest first (the bench's Story tab).
+func story_seen() -> Array:
+	return data["story_flags"].filter(func(t: String) -> bool: return Story.has(t))
+
+
+## Triggers fired since the bench last showed them; reading empties the queue.
+func take_story_queue() -> Array:
+	var queued: Array = data["story_queue"].duplicate()
+	data["story_queue"].clear()
+	return queued
 
 
 # ------------------------------------------------------------------ save

@@ -84,12 +84,11 @@ const MAX_REROLLS_PER_BENCH := 3
 
 # ------------------------------------------------------------------ systems not built yet (plan budget)
 
-## Skill trees arrive in Milestone 5. The plan budgets about 1.3x effective damage by the end of
-## a first run; later runs fill the third tree with diminishing returns.
-const SKILL_DAMAGE_BY_RUNS: Array[float] = [0.0, 0.30, 0.40, 0.45, 0.45]
-## Refine (Milestone 5) raises kept gear one mark per run; the credits it costs are not modelled,
-## which flatters the gear side slightly.
-const MARKS_PER_RUN := 1
+## Skills are real (Milestone 5): experience from kills and clears, a point a level and one per
+## boss's first kill, and a scripted pick (see _take_skills). The Reforge rules arrive with
+## Milestone 7; the plan keeps levels and skills through a Reforge, so the sim does too.
+## Refine is real too: the buyer weighs a fitted item's next mark against core levels by damage
+## per second per credit, with the real prices, parts and the Sentinel's gate on marks IV and V.
 ## Forge tree (Milestone 7): nodes bought with Reforge tokens, in this order while tokens last.
 ## "Head start" grants starting damage levels that grow with the tier: none at tier 1, one per
 ## rank at tier 2, two per rank at tier 3. The plan's flat "10 free damage levels" was simulated
@@ -105,20 +104,9 @@ const FORGE_NODES := [
 ## Tokens per Reforge: one for the clear, one for the tier's first boss kill (no endless waves).
 const TOKENS_PER_REFORGE := 2
 
-## Waves 1 to 15 are authored (Milestone 4). Waves 16 to 20 repeat waves 11 to 15 until Milestone 5
-## authors them; the game's wave-tier step already makes them tougher and better paid. (Milestone 3
-## built 11 to 20 from 6 to 10 with 1.3x counts and 1.6x bonuses; 11 to 15 now carry that step
-## themselves, so scaling them again would count it twice.) The Sentinel (wave 15) and the Core
-## Guardian (wave 20) also arrive with Milestone 5; until then a Warden stand-in with their health
-## share holds their place, and wave 15 counts as a boss wave as the plan has it.
-const EXTRAPOLATED_COUNT_SCALE := 1.0
-const EXTRAPOLATED_BONUS_SCALE := 1.0
-const AUTHORED_WAVES := 15
-const SENTINEL_HEALTH_SCALE := 1.6
-const GUARDIAN_HEALTH_SCALE := 2.5
+## All twenty waves are authored (Milestone 5), the Sentinel at 15 and the Core Guardian at 20.
 
 const CHASER: EnemyDefinition = preload("res://data/enemies/chaser.tres")
-const WARDEN: EnemyDefinition = preload("res://data/enemies/warden.tres")
 
 
 class SimGroup:
@@ -161,7 +149,6 @@ class TierReport:
 
 
 var _waves: Array[SimWave] = []
-var _runs_completed := 0
 var _tokens := 0
 var _forge_bought: Array[String] = []
 var _forge_income := 0.0
@@ -226,6 +213,7 @@ func _run_tier(tier: int, previous_end_dps: float) -> TierReport:
 		# Bench: equip anything better, use the crafting table, then spend.
 		_equip_best_from_inventory()
 		_use_crafting_table()
+		_take_skills()
 		_buy()
 		minutes += BENCH_SECONDS / 60.0
 		if first_run:
@@ -271,7 +259,7 @@ func _fight_wave(wave: SimWave, report: TierReport) -> float:
 			seconds_each += BOSS_OVERHEAD_SECONDS
 		kill_seconds += seconds_each * group.count
 		last_kill = maxf(last_kill, seconds_each)
-		var reward := maxi(roundi(group.definition.credit_reward * Progression.reward_multiplier(wave.number)), 1)
+		var reward := maxi(roundi(group.definition.credit_reward * Progression.income_multiplier(wave.number)), 1)
 		kill_credits += reward * group.count
 		for i in group.count:
 			# Real loot tables, real inventory rules (drops on the floor are collected on a clear).
@@ -292,11 +280,15 @@ func _fight_wave(wave: SimWave, report: TierReport) -> float:
 	kill_credits *= 1.0 + failed_attempts * DEATH_WAVE_FRACTION
 	var income := roundi(kill_credits * (1.0 + _forge_income))
 	Progression.add_credits(income)
+	Progression.add_xp(income) # as record_kill pays it
 	var bonus := roundi(wave.completion_bonus * (2 if wave.is_boss_wave else 1) * Progression.bonus_multiplier())
 	bonus = roundi(bonus * (1.0 + _forge_income))
 	var first := Progression.record_wave_cleared(wave.number, bonus, seconds)
 	income += bonus
 	if first:
+		for group in wave.groups:
+			if group.definition.is_boss:
+				Progression.record_boss_kill(group.definition.id)
 		var granted := Progression.grant_item(Loot.FIRST_CLEAR_RARITY, &"", "sim_first_clear")
 		if not granted.is_empty():
 			report.drops += 1
@@ -338,9 +330,46 @@ func _buy() -> void:
 			if value > best_value:
 				best_value = value
 				best_id = id
+		# Refining a fitted item competes for the same credits (and needs its parts).
+		var refine_uid := -1
+		for slot in Items.SLOT_IDS:
+			var item: Variant = Progression.equipped_in(slot)
+			if not (item is Dictionary) or Progression.refine_block_reason(int(item["uid"])) != "":
+				continue
+			var refined: Dictionary = item.duplicate(true)
+			refined["mark"] = int(item.get("mark", Items.MIN_MARK)) + 1
+			var gain := Progression.preview_equipped(slot, refined).sustained_dps(SHOOT_DISTANCE) - current
+			var value := gain / float(maxi(int(Crafting.refine_cost(int(refined["mark"]))["credits"]), 1))
+			if value > best_value:
+				best_value = value
+				refine_uid = int(item["uid"])
+		if refine_uid >= 0:
+			Progression.refine(refine_uid)
+			continue
 		if best_id == &"" or best_value <= 0.0:
 			return
 		Progression.buy_core(best_id)
+
+
+## Spends skill points: the open node that adds the most sustained damage per second, or, when
+## none adds any (Survivor and utility nodes), the first open node in tree order.
+func _take_skills() -> void:
+	while Progression.skill_points_available() > 0:
+		var current := Progression.build_stats().sustained_dps(SHOOT_DISTANCE)
+		var best_id: StringName = &""
+		var best_gain := -1.0
+		for node in Skills.all():
+			if Progression.skill_block_reason(node.id) != "":
+				continue
+			var skills: Dictionary = Progression.data["skills"].duplicate()
+			skills[String(node.id)] = 1
+			var gain := WeaponStats.build(Progression.PISTOL_BASE, Progression.data["core_levels"],
+				Progression.data["equipped"], skills, {}, Progression.tier).sustained_dps(SHOOT_DISTANCE) - current
+			if gain > best_gain + 0.0001:
+				best_gain = gain
+				best_id = node.id
+		if best_id == &"" or not Progression.take_skill(best_id):
+			return
 
 
 ## Equips, per open slot, the inventory item that gives the most sustained damage per second,
@@ -374,6 +403,15 @@ func _use_crafting_table() -> void:
 			var base := Items.get_attachment(item["base"])
 			if base != null and Progression.is_slot_open(base.slot) and Progression.is_base_unlocked(base):
 				Progression.dismantle(int(item["uid"]))
+	# Transmute: a Legendary core turns a fitted Epic into its Legendary when that adds damage.
+	for slot in Items.SLOT_IDS:
+		var item: Variant = Progression.equipped_in(slot)
+		if not (item is Dictionary) or Progression.transmute_block_reason(int(item["uid"])) != "":
+			continue
+		var legendary: Dictionary = item.duplicate(true)
+		legendary["rarity"] = Items.Rarity.LEGENDARY
+		if Progression.preview_equipped(slot, legendary).sustained_dps(SHOOT_DISTANCE) > Progression.build_stats().sustained_dps(SHOOT_DISTANCE):
+			Progression.transmute(int(item["uid"]))
 	for i in MAX_REROLLS_PER_BENCH:
 		var pick := _weakest_affix()
 		if pick.is_empty() or not Progression.reroll_affix(int(pick["uid"]), int(pick["index"])):
@@ -406,7 +444,6 @@ func _weakest_affix() -> Dictionary:
 
 ## The reset and keep rules from the plan, plus the kept systems that are not built yet.
 func _reforge() -> void:
-	_runs_completed += 1
 	_tokens += TOKENS_PER_REFORGE
 	for node in FORGE_NODES:
 		if _forge_bought.has(node["name"]) or _tokens < int(node["cost"]):
@@ -418,31 +455,31 @@ func _reforge() -> void:
 	var kept := Progression.data
 	var next_tier := Progression.tier + 1
 	_fresh_progression(next_tier)
-	# Keep: inventory, equipped build, parts (the real keep list), with the crafting table's marks.
+	# Keep: inventory, equipped build (refined marks included), parts, levels and skills.
 	Progression.data["inventory"] = kept["inventory"]
 	Progression.data["overflow"] = kept["overflow"]
 	Progression.data["equipped"] = kept["equipped"]
 	Progression.data["parts"] = kept["parts"]
 	Progression.data["records"] = kept["records"]
 	Progression.data["loot_state"] = kept["loot_state"]
+	Progression.data["xp"] = kept["xp"]
+	Progression.data["skills"] = kept["skills"]
+	Progression.data["boss_kills"] = kept["boss_kills"]
 	Progression._restore_loot_state()
-	for slot in Progression.data["equipped"]:
-		var item: Dictionary = Progression.data["equipped"][slot]
-		item["mark"] = mini(int(item.get("mark", 1)) + MARKS_PER_RUN, Items.MAX_MARK)
 
 
 ## A fresh tier's progression: wave progress, credits and core tuning reset; Forge grants applied.
 func _fresh_progression(tier: int) -> void:
 	Progression.data = SaveFile.fresh()
-	Progression.data["seed"] = 20261029
+	# SIM_SEED in the environment reruns the loot with another seed, to see how much a result rests
+	# on one run's drops.
+	var seed_text := OS.get_environment("SIM_SEED")
+	Progression.data["seed"] = int(seed_text) if seed_text != "" else 20261029
 	Progression.data["tier"] = tier
 	Progression._restore_loot_state()
 	var free_levels := _forge_head_start * maxi(tier - 1, 0)
 	if free_levels > 0:
 		Progression.data["core_levels"]["damage"] = free_levels
-	var skill_percent: float = SKILL_DAMAGE_BY_RUNS[mini(_runs_completed, SKILL_DAMAGE_BY_RUNS.size() - 1)]
-	if skill_percent > 0.0:
-		Progression.data["skills"] = {"modifiers": [StatModifier.make(&"damage", 0.0, skill_percent)]}
 
 
 # ------------------------------------------------------------------ waves
@@ -462,58 +499,16 @@ func _load_waves() -> Array[SimWave]:
 			sim_group.interval = group.interval
 			wave.groups.append(sim_group)
 		waves.append(wave)
-	assert(waves.size() == AUTHORED_WAVES, "the simulation extrapolates from fifteen authored waves")
-	var sentinel := _boss_stand_in("sentinel", SENTINEL_HEALTH_SCALE)
-	var guardian := _boss_stand_in("core_guardian", GUARDIAN_HEALTH_SCALE)
-	var fifteen: SimWave = waves[AUTHORED_WAVES - 1]
-	if not fifteen.is_boss_wave:
-		fifteen.is_boss_wave = true
-		fifteen.groups.append(_boss_group(sentinel))
-	for number in range(AUTHORED_WAVES + 1, RUN_WAVES + 1):
-		var template: SimWave = waves[(number - AUTHORED_WAVES - 1) % 5 + AUTHORED_WAVES - 5]
-		var wave := SimWave.new()
-		wave.number = number
-		wave.completion_bonus = roundi(template.completion_bonus * EXTRAPOLATED_BONUS_SCALE)
-		wave.is_boss_wave = number % 5 == 0
-		for group in template.groups:
-			if group.definition.is_boss:
-				continue
-			var sim_group := SimGroup.new()
-			sim_group.definition = group.definition
-			sim_group.count = maxi(roundi(group.count * EXTRAPOLATED_COUNT_SCALE), 1)
-			sim_group.start_delay = group.start_delay
-			sim_group.interval = group.interval
-			wave.groups.append(sim_group)
-		if wave.is_boss_wave:
-			wave.groups.append(_boss_group(guardian))
-		waves.append(wave)
+	assert(waves.size() == RUN_WAVES, "the simulation runs the twenty authored waves")
 	return waves
-
-
-func _boss_group(definition: EnemyDefinition) -> SimGroup:
-	var boss := SimGroup.new()
-	boss.definition = definition
-	boss.count = 1
-	boss.start_delay = 2.0
-	boss.interval = 1.0
-	return boss
-
-
-func _boss_stand_in(id: String, health_scale: float) -> EnemyDefinition:
-	var definition: EnemyDefinition = WARDEN.duplicate()
-	definition.id = StringName(id)
-	definition.display_name = id.capitalize()
-	definition.max_health = WARDEN.max_health * health_scale
-	definition.credit_reward = roundi(WARDEN.credit_reward * health_scale)
-	return definition
 
 
 # ------------------------------------------------------------------ report
 
 func _print_report(reports: Array[TierReport]) -> void:
 	print("\nReforge simulation: first run plus %d consecutive Reforges" % TIERS_TO_SIMULATE)
-	print("Real: stats function, cost curves, loot tables, inventory rules, crafting table, wave data 1-15, armour, tier steps.")
-	print("Modelled: hit rate %.2f, %.1f s per enemy, combat pace x%.1f, %.0f s bench, %.0f min side content per tier, deaths and farming from shots to kill, first-run learning, waves 16-20 extrapolated, Sentinel and Guardian stand-ins, shields as engage time, skills, marks, Forge." % [HIT_RATE, ENGAGE_SECONDS, COMBAT_PACE, BENCH_SECONDS, SIDE_CONTENT_MINUTES_PER_TIER])
+	print("Real: stats function, cost curves, loot tables, inventory rules, crafting table, wave data 1-20, skills, armour, tier steps.")
+	print("Modelled: hit rate %.2f, %.1f s per enemy, combat pace x%.1f, %.0f s bench, %.0f min side content per tier, deaths and farming from shots to kill, first-run learning, shields as engage time, Forge." % [HIT_RATE, ENGAGE_SECONDS, COMBAT_PACE, BENCH_SECONDS, SIDE_CONTENT_MINUTES_PER_TIER])
 	print("Minutes are anchored to the plan's first-run estimate through COMBAT_PACE; shots to kill and recovery do not depend on it.")
 	print("")
 	print("%-5s %-7s %-7s %-10s %-10s %-12s %-9s %-7s %-7s %-7s %-7s %-7s %-9s %-9s" % [

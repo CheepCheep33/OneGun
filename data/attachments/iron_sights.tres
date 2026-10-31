@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="AttachmentDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/weapons/attachment_definition.gd" id="1_def"]
+
+[resource]
+script = ExtResource("1_def")
+id = &"iron_sights"
+display_name = "Iron sights"
+slot = &"optic"
+description = "Plain iron sights: no help, no cost."
+mark_scale = 0.15
+behaviours = {}
+is_default = true
+unlock_wave = 0
+gate_text = ""
+visual = {}

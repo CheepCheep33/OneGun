@@ -14,8 +14,8 @@ This file tracks what is built, the decisions that shape the code, and the next 
 | 1. Shooting prototype | Merged. |
 | 2. Incremental prototype | Merged. Playtest answers (first upgrade inside two minutes, loop fun on its own) still wanted. |
 | 3. Gunsmith, loot and projectiles | Merged (PR #3). Its playtest questions were never answered; they are carried into the Milestone 4 gate below. |
-| 4. Crafting and the Scrapyard | Built, automated checks and both performance gates pass, Reforge simulation hits its targets. **Waiting for Jacob's playtest** (questions under "Next concrete step"). |
-| 5. Skills, story and full roster | Not started |
+| 4. Crafting and the Scrapyard | Merged (PR #4). Its playtest questions are carried into the Milestone 5 gate below. |
+| 5. Skills, story and full roster | Built, automated checks and both performance gates pass, Reforge simulation hits its targets on the twenty authored waves. **Waiting for Jacob's playtest** (questions under "Next concrete step"). |
 | 6. Procedural arena | Not started |
 | 7. Reforge | Not started |
 | 8. First release | Not started |
@@ -111,6 +111,83 @@ transmute stay in Milestone 5.
   cap of six), `scrapyard_cases.gd` (gate, payout, a run with pickup, extraction and death, the
   version 3 migration), and a Milestone 4 round in the performance case.
 
+## What Milestone 5 contains
+
+The approved plan's row: three skill trees, optic and underbarrel bases, the remaining bases,
+Charge and Launcher, refine, fuse and transmute, the Foundry and Signal Tower, the turret, the
+Sentinel (wave 15) and the Core Guardian (wave 20), 20 waves, story chapters 1 to 4 and six
+Legendaries, verified by a stats boundary sweep and 10,000 sampled builds.
+
+- **Skill trees** (`data/skills/skill_trees.tres`, `scripts/skills/`, the bench's Skills tab):
+  Marksman, Engineer and Survivor, eight nodes each in four tiers of two plus a capstone (Bullet
+  Time, Overclock, Phoenix). Two points in a tree open its next tier; a capstone needs the other
+  eight. Points come from levels (experience is every credit earned from kills and clears, about
+  level 15 at the first wave 20) and one per boss's first kill. Respec is free at the bench. Stat
+  nodes go through `WeaponStats.build`; player nodes (health, speed, healing, plating, dash,
+  magnet, Phoenix, Bullet Time) are applied per encounter. A first run cannot take every node.
+- **Bases: 33 in seven slots.** New: Charge receiver (hold to charge one simulated shot, up to 3x
+  at 0.9 s, a HUD meter), Short barrel, Compensator, Drum, Overflow, Hollow point, Incendiary
+  (burn 40% of a hit a second for 3 s, refreshed, never stacked), Cryo (40% slow for 2.5 s; a hit
+  on a slow at least 1 s old shatters it for 50% in 2.5 m), Shock (arcs to a robot nearby and
+  stuns 0.4 s); optics Reflex sight, Rangefinder, Scanner (target health readout, turrets marked
+  through walls, +15% weak-point damage); underbarrels Grip, Laser, Launcher (right click or the
+  alt-fire input: a grenade for 3x a shot in 3.5 m, one per 4 kills, two held) and Shield emitter
+  (70% less damage from the front while reloading). Both slots open at wave 10.
+- **Six Legendaries** (made by transmute, or the Core Guardian's first kill; never crafted or
+  dropped by robots): Triplet (Burst: the last round
+  of a burst always crits), Stillwater (Long barrel: one more pierce, hits slow 35% for 2 s),
+  Bottomless (Extended magazine: a kill returns two rounds), Hydra (Splitter: four rays, no range
+  penalty), Sunburst (Explosive: blasts set robots burning), Far Sight (Rangefinder: twice the
+  distance bonus).
+- **Refine, fuse, transmute** (the craft tab's "Upgrade the selected item"): refine raises a mark
+  (II to V; each mark adds 15% of the base's upsides and softens its downsides by the same) for
+  500 / 1200 / 4000 / 9000 credits plus 3 Alloy / 3 Circuits / 2 Cores / 4 Cores; marks IV and V
+  open after the Sentinel. Fuse turns three items of one slot and rarity (Common to Rare) into one
+  of the next rarity: the selected item keeps its base and mark, the two lowest-mark unlocked
+  spares go, affixes reroll for the new rarity, plus 2 of the item's own part. Fusing then
+  dismantling always loses part value (checked). Transmute turns an Epic whose base has a
+  Legendary into it for one Legendary core, mark and affixes kept. Tinkerer takes a quarter off
+  the parts of all four.
+- **Turret** (waves 13, 14, 15, 17, 18, 19): stationary, 110 health, armour 3, a core weak point.
+  Its aim line follows the player, locks 0.45 s before the shot (a step aside dodges it) and
+  fires one heavy 24-damage bolt. Drops Rares 25% of the time; the Scanner marks it.
+- **The Sentinel** (wave 15, 800 health, armour 3): two shield arcs on layer 4 circle it (faster
+  below half health) and stop every player ray and round; a melee swing; every 10 s a low laser
+  sweep across a quarter turn with a 1.2 s warning line, which a jump clears.
+- **The Core Guardian** (wave 20, 1400 health, armour 6): four phases at 75, 50 and 25% health.
+  Swing and slam ring, then a five-bolt volley, then drone summons with volleys, then the
+  Sentinel's arcs and sweep with the swing. At each phase line it vents for 4.5 s with its core
+  open, the only time the core takes hits (double damage, no armour). Its first kill puts a
+  Legendary in the inventory. Every boss's first kill also gives a skill point.
+- **Waves 16 to 20** (Night shift, Crossfire, Heavy plating, Last line, The Core Guardian).
+- **The Foundry** (`scenes/areas/foundry.tscn`, opens after wave 10, one attempt per
+  intermission): a heat room. Four floor strips cycle every 12 s (1.5 s warning glow, then 4 s
+  molten at 18 a second; staggered 3 s apart) while heavies, shield bearers and chasers come. The
+  first clear unlocks Burst and grants a Burst Rare; later clears a Rare; a clear without damage
+  an Epic. Two logs.
+- **The Signal Tower** (`scenes/areas/signal_tower.tscn`, opens after wave 15): ten floors with a
+  rule each (faster robots, armour, no reloads with a kill refilling the magazine, only crits
+  land, and so on). After each floor a pad lights; stepping on it opens the bench in pad mode
+  (gear and skills, no tuning) and "Climb to floor n" continues. The first floor 5 unlocks Charge;
+  the first top unlocks Overflow and grants an Epic and one Legendary core per Reforge tier.
+- **Story chapters 1 to 4** (`data/story/story.tres`, `scripts/story/story.gd`): VERA greets the
+  player at the bench after each first clear and after a first death; boss intro cards on a
+  boss's first appearance and the Guardian's phase lines; logs found in the Scrapyard (1, 3 and 6
+  extractions), the Foundry, the tower (floors 3, 6, 9, the top) and the arena (waves 12 and 18).
+  Each fires once per save and is kept in the bench's Story tab. Nothing gates on it.
+- **Save file** version 5 (experience, skills, boss kills, story flags, Foundry and tower records,
+  marks), migrating from 1 to 4.
+- **Checks:** `skills_cases.gd`, `upgrade_cases.gd` (refine, fuse, conservation, transmute, every
+  Legendary differs from its Epic, the craft tab), `arsenal_cases.gd` (each status, Stillwater,
+  the tower's rules, Charge, Launcher, Shield emitter, Scanner), `boss_cases.gd` (turret, Sentinel,
+  Guardian phases and vents, the first-kill Legendary, boss cards), `areas_cases.gd` (Foundry
+  strips and rewards, tower floors, pad and rewards). `stats_cases.gd` now sweeps every base at
+  every mark, Epic and Legendary, with affix rolls 0 and 1, no and maxed core levels, no and all
+  skills, tiers 0 and 3 and extreme shot contexts, plus 10,000 sampled builds across all seven
+  slots with skills; every stat stays finite and inside its limits. `roster_cases.gd` adds the
+  plan's Splitter plus Shock combination: Shock arcs at most once into each robot per shot. The performance case has a
+  Milestone 5 round and the GPU probe thirty-odd new events (see "Performance budget").
+
 ## Performance budget (standing rule)
 
 Jacob's rule from 30 Oct 2026: every milestone and every thread keeps stutter and lag in check;
@@ -155,13 +232,20 @@ are the rules the code follows and the checks that hold them.
   and at most 8 plain objects (the engine keeps a few lazily). A per-shot, per-bolt, per-hit or
   per-death allocation shows up as a count that grows by tens or hundreds.
 - Every spawn of that round comes from the enemy reserve (nothing built), and the reserve holds
-  what the waves can have alive at once plus each boss's adds (56 nodes for waves 1 to 15). Sixteen
+  what the waves can have alive at once plus each boss's adds (62 nodes for the twenty waves). Sixteen
   drops over two batches come from the drop reserve and build no node, mesh or material.
 - A Milestone 4 round, twice: Splitter plus Explosive on automatic into heavies and shield bearers
   (three shells a pull, a blast each), the Foreman calling in drones and laying pools, every
   death. The second round adds no node, orphan or resource (864 nodes, 257 resources both times on
   30 Oct). It found a real bug on the way: a dead enemy's deferred trip to the reserve could park
   a node twice, so two later spawns shared one node; `WaveRunner._recycle` now refuses that.
+- A Milestone 5 round, twice: Cryo, Shock and Incendiary on automatic into a crowd (frost,
+  shatters, arcs, burns, stuns), a Launcher grenade, the Scanner marking two turrets that aim and
+  fire their heavy bolt, the Sentinel's sweep, the Core Guardian's slam, volley, vent and summons,
+  every death. The second round adds no node, orphan or resource (962 nodes, 410 resources on
+  31 Oct). Its writing found the turret's 0.24 m bolt would have built a capsule mesh on its first
+  shot; it is a projectile profile now, so the warm-up builds it.
+- No enemy scene shows a lit see-through material (see the GPU gate below).
 - Game logic for that round stays under the budget, scaled to the test machine's speed by a
   calibration loop so a slow CI runner does not fail it and a fast one does not loosen it.
 - The warm-up drew every enemy scene the waves use, with the muzzle light on; damage numbers are
@@ -173,15 +257,24 @@ under Xvfb, shader cache off, the way a browser pays every session) through a sc
 first-time events after the warm-up: first shot, first hit, damage numbers, deaths, drops, a
 pickup, a shooter's bolt, the Warden, an explosive shell and its blast, a Splitter shot, a heavy
 and a weak-point hit, a shield bearer and a shot on its shield, the Foreman, its summon and its
-molten pools, a reload, each repeated once, then a crowd under automatic fire, and finally the
-Scrapyard's door opening and a core pickup. It fails when an event's worst frame is more than 40 ms (or 0.8 of the idle median) over
+molten pools, the status ammo (frost, shatter, arcs, a burn), a charged shot, a grenade, a turret
+with its aim line, heavy bolt and Scanner marker, a story card, the Sentinel and its sweep, the
+Core Guardian's slam and vents, a reload, each repeated once, then a crowd under automatic fire,
+and finally the Scrapyard's door and a core pickup, the Foundry's heat strips and the Signal
+Tower's pad. It fails when an event's worst frame is more than 40 ms (or 0.8 of the idle median) over
 that event's median, which under llvmpipe is a shader compile or an upload (a timing failure is
 retried once and must repeat), or when a repeated event allocates any GPU buffer or texture
 memory. Before the fix the first shot read 1546 ms against an idle frame of 52, the first hit
 795, the first drop 109 and the first bolt 153; after it every event is within 10 ms of idle and
 every repeat allocates nothing. With Milestone 4 (30 Oct, llvmpipe, idle median 38 ms) the worst
 first-time frame is 20 ms over its median (the second molten pool), and the first blast's 3.8 KB of
-buffers is the only first-time allocation; its repeat allocates nothing.
+buffers is the only first-time allocation; its repeat allocates nothing. Milestone 5's events
+found one real compile: 380 ms at the Sentinel's first spawn, every run, although the warm-up had
+drawn its scene. The shield arcs were the only lit see-through material in the game; lit
+transparent materials get a variant the warm-up does not trigger, so the arcs are unshaded now
+and the performance case refuses a lit see-through material in any enemy scene. After the fix
+(31 Oct, idle median 21 ms) the worst first-time frame is 14 ms over its event's median (the
+first shooter bolt), and only first-time capsules (charged round, grenade, heavy bolt) allocate.
 
 **Tools.** `godot --headless --path . res://tests/perf_probe.tscn` prints the game-logic cost of
 one frame for a dozen arena loads (empty arena, frozen crowd, walking crowd, no nav agents, no
@@ -206,38 +299,47 @@ compiles; the performance case's counts point at it.
 ## Reforge simulation: what it says
 
 Three consecutive resets after a first run, with the real stats function, cost curves, loot
-tables, inventory rules and crafting table, a greedy buyer (most sustained damage per second per
-credit), and the plan's budget for the systems not built yet (skills about 1.3x damage after a
-run, kept gear refined one mark per run, Forge nodes bought with two tokens per Reforge). Waves 1
-to 15 are the authored data; 16 to 20 repeat 11 to 15 (the wave-tier step already makes them
-tougher and better paid) with Warden stand-ins for the Sentinel at 15 and the Core Guardian at 20.
-At every bench the simulated player dismantles the spares it can compare and rerolls a fitted
-affix that adds under 2% of its damage per second, up to three rerolls a bench. Armour is
-modelled per hit, shield bearers as 2 s of extra engagement each.
+tables, inventory rules, crafting table, skills, refine and transmute, a greedy buyer (most
+sustained damage per second per credit, core levels and refines weighed together; skill points on
+the node that adds the most, else the first open one), and the plan's budget for the one system
+not built yet: Forge nodes bought with two tokens per Reforge. Levels and skills are kept through
+a Reforge, as the plan has it. All twenty waves are the authored data, the Sentinel and the Core
+Guardian included. At every bench the simulated player dismantles the spares it can compare,
+transmutes a fitted Epic when it has a Legendary core and that helps, and rerolls a fitted affix
+that adds under 2% of its damage per second, up to three rerolls a bench. Armour is modelled per
+hit, shield bearers as 2 s of extra engagement each. `SIM_SEED=<n>` in the environment reruns
+the loot with another seed.
 
 | Tier | Shots to kill a chaser, wave 1 | By wave 5 | Recover previous damage per second | Minutes to next Reforge |
 | --- | --- | --- | --- | --- |
-| 0 (first run) | 4 | 2 | - | 108 |
-| 1 | 5 | 1 | 8.9 min | 76 |
-| 2 | 5 | 1 | 8.6 min | 75 |
-| 3 | 4 | 1 | 8.3 min | 74 |
+| 0 (first run) | 4 | 2 | - | 105 |
+| 1 | 5 | 1 | 8.6 min | 74 |
+| 2 | 5 | 1 | 5.4 min | 73 |
+| 3 | 3 | 1 | 3.9 min | 72 |
 
 Targets: 5 to 7 shots at wave 1 of tier 1 (later tiers 3 to 7), recovery under 10 minutes, 60
-to 90 minutes to the next Reforge, first run 100 to 120. All hit. What Milestone 4 changed and
+to 90 minutes to the next Reforge, first run 100 to 120. All hit. What Milestone 5 changed and
 what to know:
 
-- **Kept gear is now above the plan's budget.** Two more slots with affixes, Epics, Explosive's
-  1.2x on a single target and rerolls take the first run's gear to +67% damage (the plan budgets
-  about 1.6x), and tier 1 opens at 5 shots, the bottom of its band. Three tuning changes got it
-  there, each a real value: Overpressure trades recoil only (+12% damage; it was +20% damage and
-  -8% fire rate, stronger than the Long barrel); waves 11 to 15 pay 230 to 340 bonuses; and the
-  readouts count the Splitter's spread (all three rays were assumed to land at 10 m, which made it
-  the best gun in the simulation by a wide margin). The plan's levers if tier 1 drops to 4 again:
-  the kept-gear share (refine in Milestone 5, Reforge rules in 7), the tier step, Forge grants.
-- **Recovery depends on the crafting table.** Without the simulated rerolls, tier 1 recovered in
-  10.8 minutes: the first run's late waves buy far more core levels than before, and gear fire-rate
-  penalties add to the gap because percentages sum. Banked parts spent on rerolls early in tier 1
-  close it, so a player who ignores the table will feel the next tier drag.
+- **Kill income after a Reforge steps faster than enemy health.** With the twenty real waves and
+  real skills (about 1.2x damage at the end of a first run, under the plan's 1.3x budget), tier 1
+  recovered in 10.5 minutes on every seed tried: the first run's last five waves buy far more core
+  levels than the old extrapolation did, and the crossing always fell just after wave 6. Cheaper
+  refines and fewer late bonuses did not move it. Per-kill credits and completion bonuses now
+  scale by `Progression.REFORGE_INCOME_STEP` (4.0) per Reforge tier while enemy health and armour
+  keep 2.5 (`Progression.income_multiplier` beside `reward_multiplier`; the wave runner keeps a
+  separate `income_scale`). Shots to kill are unchanged; recovery is 8.4 to 8.6 minutes across
+  seeds. Higher tiers now earn a lot of credits; core prices do not scale with the tier, so later
+  tiers rebuy their levels quickly, which is the intent, and the Forge (Milestone 7) is where to
+  rein it in if it feels flat.
+- **Kept gear sits at the top of its band.** On the default seed tier 1 opens at 5 shots; on
+  other seeds it opens at 4 (a miss) when the first run found strong gear. The plan's levers:
+  the tier step, Forge grants, the Reforge keep rules (Milestone 7).
+- **Refine is a small step.** A mark adds 15% of a base's upsides, so the buyer refines only late
+  in a tier when parts are banked. If players ignore it, cheaper early marks or marks that also
+  scale affixes are the levers.
+- **Recovery depends on the crafting table** (Milestone 4 finding): banked parts spent on rerolls
+  early in a tier close the gap, so a player who ignores the table will feel the next tier drag.
 - **Minutes are anchored, not predicted.** Real combat runs slower than kill arithmetic, so a
   single pace multiplier (`COMBAT_PACE` 3.0) plus 20 minutes of side content per tier and
   first-run learning time are fitted to the plan's 100 to 120 minute first run. Shots to kill
@@ -365,6 +467,20 @@ the wave 5 number toward the plan's 3.
   their scene checks on the running game; `-- case=<name>` runs one case alone and
   `-- case=a+b` several in order. A scene case leaves wave 1 started with its spawns stopped, as
   the next case expects.
+- **Skills are kept through a Reforge** (the plan's keep list; the Reforge itself is Milestone 7),
+  so a first run's points carry on and later runs fill the other trees.
+- **Bosses' telegraph parts are part of their scenes** (arcs, sweep warning and beam, slam ring,
+  open and shut cores), shown and hidden, never built: the warm-up draws them all.
+- **See-through materials in enemy scenes are unshaded** (the GPU gate's Milestone 5 finding;
+  the performance case enforces it).
+- **Side areas swap in at the bench**, so their scenes and navigation build there; anything that
+  appears mid-run in them (heat strips, the pad) is shown for the first frames so the area's
+  `warm_up_lighting` draws it.
+- **The Signal Tower's floor rules live on the gun and the shot pipeline** (`Pistol.no_reloads`,
+  `ShotPipeline.crits_only`, the wave runner's speed and armour modifiers) and every encounter
+  start clears them.
+- **The story is data** (`data/story/story.tres`): each trigger fires once per save, VERA's wave
+  lines wait for the bench so the cleared banner stays short, and logs ride on the banner.
 - All art and audio are generated placeholders, named `placeholder_*`. New enemies and the loot
   reuse the existing sounds with pitch changes.
 
@@ -396,6 +512,20 @@ the wave 5 number toward the plan's 3.
 - Scrapyard: 90 s to the door, twelve cores, 2 Scrap a core plus an Alloy per 3 and a Circuit per
   8, a Rare per extraction; spawns 30 chasers, 20 runners, 8 shooters, 3 heavies, 7 alive.
 - Firing Range: dummies at 8, 12, 16, 20, 28 m; gallery of 8 targets, par 14 s.
+- Experience: one per credit from kills and clears; level n needs 80 x 1.35^(n-1) more, capped at
+  level 50. One skill point a level after the first, one per boss's first kill.
+- Statuses: burn 40% of the hit a second for 3 s (ticks every 0.5 s, refreshed); slow 40% for
+  2.5 s, shatter after 1 s for 50% in 2.5 m; Shock stun 0.4 s; Status Mastery +40% duration.
+- Refine credits 500 / 1200 / 4000 / 9000 plus 3 Alloy / 3 Circuits / 2 Cores / 4 Cores (marks II
+  to V; IV and V after wave 15); fuse 2 of the item's own part; transmute one Legendary core.
+- Turret 110 health, armour 3, one 24-damage bolt at 30 m/s every 3.2 s after a 1.6 s aim (locks
+  0.45 s before), 16 credits; Sentinel 800 health, armour 3, sweep 26 every 10 s, 160 credits;
+  Core Guardian 1400 health, armour 6, vents 4.5 s at 75, 50, 25%, 260 credits.
+- Wave bonuses 16 to 20: 380, 400, 420, 450, 520 (Guardian, doubled); wave 15 is 360 (Sentinel,
+  doubled). Reforge tiers scale kill income and bonuses x4 a tier, enemy health and armour x2.5.
+- Foundry: strips every 12 s (1.5 s warning, 4 s molten at 18 a second, 3 s stagger); 5 heavies,
+  5 shield bearers, 8 chasers, 6 alive. Signal Tower: ten floors, rules as in
+  `scripts/areas/signal_tower.gd`.
 - Player: 100 health, walk 6 m/s, sprint 9 m/s.
 
 ## Known issues
@@ -405,12 +535,18 @@ the wave 5 number toward the plan's 3.
   crafting table, heavies and shield bearers under Explosive fire, the Foreman's pools and the
   Scrapyard draw. Feel and pacing are unverified, and the Reforge simulation's minutes are anchored
   to the plan rather than measured.
-- Burst's gate stands in for the Foundry, which does not exist yet.
-- Optic and underbarrel open after wave 10 but have no bases yet (Milestone 5 and later).
-- Wave 15 has no boss yet: the Sentinel is Milestone 5. Waves 16 to 20 are not authored.
+- Milestone 5 is unplayed by a person: skill pacing, the Charge feel, the turret's lock window,
+  the Sentinel's sweep height, the Guardian's phases and the Foundry's heat cycle are first
+  guesses. The screenshot tour confirmed the skills tab, the upgrade section, the story log,
+  turrets with Scanner markers, the Sentinel's arcs and sweep warning, the Guardian venting, the
+  Foundry's strips and the tower's pad draw.
+- The touch controls have no alt-fire button yet, so the Launcher's grenade and Overclock need a
+  keyboard and mouse.
+- Hollow point is the one base with a hard downside against heavies, turrets and bosses; it may
+  want a small extra upside after a playtest.
 - The Scrapyard is authored, one layout; the plan rolls it from the chunk kit in Milestone 6.
 - Kept gear runs above the plan's budget and tier 1 of the simulated Reforge opens at the bottom of
-  its band (see "Reforge simulation").
+  its band on the default seed and below it on some others (see "Reforge simulation").
 - The Explosive blast is a plain additive sphere; at close range several at once wash the view
   out for a fifth of a second.
 - The gun model can clip into walls when standing right against them.
@@ -428,20 +564,19 @@ the wave 5 number toward the plan's 3.
 
 ## Next concrete step
 
-Jacob plays the Milestone 4 preview build and reports. The plan's gate for this milestone: does he
-craft and enter the Scrapyard without being told to, and do his builds differ from run to run?
-Also: does the Foreman's pool telegraph read in time, can he tell when a shield bearer's shield is
-down, and does the Splitter or Explosive feel worth fitting?
+Jacob plays the Milestone 5 preview build and reports. The plan's gate for this milestone: do the
+three skill trees lead to different builds, do refine, fuse and transmute get used, and do the
+Sentinel and the Core Guardian read (arcs, sweep warning, the vent window)? Also: does a Foundry
+run feel fair with the heat strips, and does a Signal Tower floor rule change how he plays?
 
-Carried over from Milestone 3, still unanswered: did he reach the Warden without guidance, did he
-equip a drop on purpose (and did the compare view make the choice clear), is the stutter when
-shooting gone, and how do shooters feel firing from 18 m?
+Carried over from Milestone 4, still unanswered: did he craft and enter the Scrapyard without being
+told to, do builds differ from run to run, does the Foreman's pool telegraph read in time, can he
+tell when a shield bearer's shield is down, and do the Splitter and Explosive feel worth fitting?
+From Milestone 3: did he reach the Warden without guidance, did he equip a drop on purpose, is the
+stutter when shooting gone, and how do shooters feel from 18 m?
 
 Every playtest: the FPS readout (pause menu, Show FPS) in a busy wave, average and worst frame,
-with the device and browser. A worse reading than Milestone 3's blocks the merge.
+with the device and browser. A worse reading than the last one blocks the merge.
 
-Then Milestone 5: three skill trees, optic and underbarrel bases, Charge and Launcher, refine,
-fuse and transmute, the Foundry and Signal Tower, the turret, the Sentinel (wave 15) and the Core
-Guardian (wave 20), waves 16 to 20 and story chapters 1 to 4, each new enemy and effect inside the
-performance budget. (The plan's dangerous-combination test names Splitter plus Shock ammo; Shock
-is not built yet, so Milestone 4 tests the same one-chain-per-robot rule through the Arcing affix.)
+Then Milestone 6: the procedural arena from the chunk kit (the plan's row), the Scrapyard rolled
+from it, each chunk inside the performance budget.

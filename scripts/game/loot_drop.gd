@@ -23,7 +23,12 @@ static var _gem_mesh: BoxMesh
 ## Rarity index -> [beam material, gem material], made once (warm_up_materials).
 static var _materials: Dictionary = {}
 
+## Survivor's Magnet widens every drop's pickup radius by this factor; the game sets it when an
+## encounter starts (a recycled drop picks it up in reset()).
+static var pickup_scale := 1.0
+
 var item: Dictionary = {}
+var _sphere: SphereShape3D
 var _beam: MeshInstance3D
 var _gem: MeshInstance3D
 var _time := 0.0
@@ -51,9 +56,9 @@ func _ready() -> void:
 	monitorable = false
 	_shared_meshes()
 	var shape := CollisionShape3D.new()
-	var sphere := SphereShape3D.new()
-	sphere.radius = PICKUP_RADIUS
-	shape.shape = sphere
+	_sphere = SphereShape3D.new()
+	_sphere.radius = PICKUP_RADIUS * pickup_scale
+	shape.shape = _sphere
 	shape.position = Vector3.UP * 0.8
 	add_child(shape)
 
@@ -81,6 +86,8 @@ func _exit_tree() -> void:
 func reset(dropped_item: Dictionary) -> void:
 	item = dropped_item
 	_collected = false
+	if _sphere != null and not is_equal_approx(_sphere.radius, PICKUP_RADIUS * pickup_scale):
+		_sphere.radius = PICKUP_RADIUS * pickup_scale
 	_time = 0.0
 	var rarity := clampi(int(item.get("rarity", 0)), 0, Items.RARITY_COLORS.size() - 1)
 	var materials := _materials_for(rarity)

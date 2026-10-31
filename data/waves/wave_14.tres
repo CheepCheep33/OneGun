@@ -3,10 +3,12 @@
 [ext_resource type="Script" path="res://scripts/game/wave_definition.gd" id="1_wave"]
 [ext_resource type="Script" path="res://scripts/game/spawn_group.gd" id="2_group"]
 [ext_resource type="PackedScene" path="res://scenes/enemies/shield_bearer.tscn" id="scene_shield_bearer"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/turret.tscn" id="scene_turret"]
 [ext_resource type="PackedScene" path="res://scenes/enemies/heavy.tscn" id="scene_heavy"]
 [ext_resource type="PackedScene" path="res://scenes/enemies/chaser.tscn" id="scene_chaser"]
 [ext_resource type="PackedScene" path="res://scenes/enemies/swarm_drone.tscn" id="scene_swarm_drone"]
 [ext_resource type="Resource" path="res://data/enemies/shield_bearer.tres" id="def_shield_bearer"]
+[ext_resource type="Resource" path="res://data/enemies/turret.tres" id="def_turret"]
 [ext_resource type="Resource" path="res://data/enemies/heavy.tres" id="def_heavy"]
 [ext_resource type="Resource" path="res://data/enemies/runner.tres" id="def_runner"]
 [ext_resource type="Resource" path="res://data/enemies/swarm_drone.tres" id="def_swarm_drone"]
@@ -15,11 +17,19 @@
 script = ExtResource("2_group")
 enemy_scene = ExtResource("scene_shield_bearer")
 definition = ExtResource("def_shield_bearer")
-count = 8
-interval = 2.5
+count = 7
+interval = 2.8
 start_delay = 1.0
 
 [sub_resource type="Resource" id="Group_2"]
+script = ExtResource("2_group")
+enemy_scene = ExtResource("scene_turret")
+definition = ExtResource("def_turret")
+count = 3
+interval = 10.0
+start_delay = 4.0
+
+[sub_resource type="Resource" id="Group_3"]
 script = ExtResource("2_group")
 enemy_scene = ExtResource("scene_heavy")
 definition = ExtResource("def_heavy")
@@ -27,7 +37,7 @@ count = 4
 interval = 6.0
 start_delay = 6.0
 
-[sub_resource type="Resource" id="Group_3"]
+[sub_resource type="Resource" id="Group_4"]
 script = ExtResource("2_group")
 enemy_scene = ExtResource("scene_chaser")
 definition = ExtResource("def_runner")
@@ -35,7 +45,7 @@ count = 10
 interval = 0.8
 start_delay = 5.0
 
-[sub_resource type="Resource" id="Group_4"]
+[sub_resource type="Resource" id="Group_5"]
 script = ExtResource("2_group")
 enemy_scene = ExtResource("scene_swarm_drone")
 definition = ExtResource("def_swarm_drone")
@@ -47,7 +57,7 @@ start_delay = 20.0
 script = ExtResource("1_wave")
 number = 14
 display_name = "Escort"
-groups = Array[ExtResource("2_group")]([SubResource("Group_1"), SubResource("Group_2"), SubResource("Group_3"), SubResource("Group_4")])
+groups = Array[ExtResource("2_group")]([SubResource("Group_1"), SubResource("Group_2"), SubResource("Group_3"), SubResource("Group_4"), SubResource("Group_5")])
 max_alive = 9
 completion_bonus = 290
 is_boss_wave = false

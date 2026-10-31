@@ -1,7 +1,10 @@
 class_name Hud
 extends CanvasLayer
 ## In-combat HUD: crosshair and hit markers, health, ammo, reload progress, kills, credits, wave
-## progress, the boss bar, loot pickup notes, the wave-cleared banner and the death screen.
+## progress, the boss bar, loot pickup notes, the wave-cleared banner and the death screen. Since
+## Milestone 5 also the Charge receiver's meter, the gun's status (Overclock, grenades), the
+## Scanner's reading and the story card (VERA's lines and the boss intro cards). Every widget is
+## built once; text only changes when what it shows changes.
 
 ## The death screen's button: go back to the bench.
 signal bench_requested
@@ -17,6 +20,12 @@ const WARM_UP_TEXT_STYLES := [[15, 4], [16, 5], [17, 0], [18, 6], [20, 0], [20, 
 const WARM_UP_TEXT := "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG the quick brown fox jumps over the lazy dog 0123456789 / + - · → ( ) % , . : ! ' ms fps left"
 
 const FPS_WINDOW := 0.5
+## Story cards: seconds a line stays (plus a little per character), and the fade.
+const STORY_CARD_TIME := 4.0
+const STORY_CARD_PER_CHAR := 0.03
+const STORY_CARD_FADE := 0.6
+const MAX_SCAN_MARKERS := 6
+const STORY_SPEAKER_COLOR := Color(0.55, 0.9, 1.0)
 
 var _vignette_alpha := 0.0
 var _fps_frames := 0
@@ -29,6 +38,20 @@ var _banner_tween: Tween
 ## The pickup notes, built once (MAX_PICKUP_NOTES) and reused; a note's age is -1 while hidden.
 var _notes: Array[Label] = []
 var _note_ages: Array[float] = []
+var _charge_bar: ProgressBar
+var _status_label: Label
+var _scan_label: Label
+var _story_card: PanelContainer
+var _story_speaker: Label
+var _story_text: Label
+var _story_left := 0.0
+## Lines waiting for the card, [speaker, text] each, shown in order.
+var _story_queue: Array = []
+## Scanner optic: a diamond over each marked robot (turrets), reused in turn; see set_scan_targets.
+var _scan_markers: Array[Control] = []
+var _scan_targets: Array[Enemy] = []
+var _scan_active := false
+var _scan_camera: Camera3D
 
 @onready var _vignette: ColorRect = $DamageVignette
 @onready var _crosshair: Control = $Crosshair
@@ -77,6 +100,7 @@ func _ready() -> void:
 		_pickup_notes.add_child(note)
 		_notes.append(note)
 		_note_ages.append(-1.0)
+	_build_milestone_5_widgets()
 
 
 func _process(delta: float) -> void:
@@ -95,6 +119,17 @@ func _process(delta: float) -> void:
 	if _reload_bar.visible:
 		_reload_elapsed += delta
 		_reload_bar.value = clampf(_reload_elapsed / _reload_total, 0.0, 1.0)
+	if _story_left > 0.0:
+		_story_left -= delta
+		if _story_left <= 0.0:
+			_story_card.visible = false
+			if not _story_queue.is_empty():
+				var line: Array = _story_queue.pop_front()
+				show_story(String(line[0]), String(line[1]))
+		elif _story_left < STORY_CARD_FADE:
+			_story_card.modulate.a = _story_left / STORY_CARD_FADE
+	if _scan_active:
+		_place_scan_markers()
 	for i in _notes.size():
 		if _note_ages[i] < 0.0:
 			continue
@@ -219,6 +254,8 @@ func set_combat_visible(value: bool) -> void:
 	if not value:
 		_banner.visible = false
 		_reload_bar.visible = false
+		_charge_bar.visible = false
+		hide_story()
 		for i in _notes.size():
 			_note_ages[i] = -1.0
 			_notes[i].visible = false
@@ -258,6 +295,12 @@ func show_pickup(item: Dictionary, destination: String) -> void:
 			text += "  →  inventory full, turned to parts"
 		"bumped":
 			text += "  →  tray (a lesser item became parts)"
+	show_note(text, Items.rarity_color(item))
+	_pickup_sound.play()
+
+
+## A line in the note stack (a pickup, a level, Phoenix): the free label or the oldest one.
+func show_note(text: String, color: Color) -> void:
 	var index := -1
 	var oldest := 0
 	for i in _notes.size():
@@ -270,12 +313,11 @@ func show_pickup(item: Dictionary, destination: String) -> void:
 		index = oldest
 	var note := _notes[index]
 	note.text = text
-	note.add_theme_color_override("font_color", Items.rarity_color(item))
+	note.add_theme_color_override("font_color", color)
 	note.modulate.a = 1.0
 	note.visible = true
 	_note_ages[index] = 0.0
 	_pickup_notes.move_child(note, _pickup_notes.get_child_count() - 1)
-	_pickup_sound.play()
 
 
 func pickup_note_count() -> int:
@@ -293,6 +335,10 @@ func show_wave_cleared(number: int, bonus: int, first_clear: bool, granted: Dict
 	if not granted.is_empty():
 		detail += "\n+ %s  ·  %s" % [Items.display_name(granted), Items.rarity_name(granted)]
 	show_banner("WAVE %d CLEARED" % number, detail)
+
+
+func banner_detail() -> String:
+	return _banner_detail.text
 
 
 ## The centre banner (a wave clear, a Scrapyard extraction), faded in.
@@ -319,6 +365,187 @@ func show_death(wave: int, kills: int, credits_kept: int, area := "") -> void:
 
 func hide_death() -> void:
 	_death_panel.visible = false
+
+
+# ------------------------------------------------------------------ Milestone 5
+
+func _build_milestone_5_widgets() -> void:
+	_charge_bar = _reload_bar.duplicate() as ProgressBar
+	_charge_bar.name = "ChargeBar"
+	_charge_bar.offset_top = 40.0
+	_charge_bar.offset_bottom = 48.0
+	_charge_bar.modulate = Color(0.6, 0.9, 1.0)
+	_charge_bar.visible = false
+	_combat_group.add_child(_charge_bar)
+	_status_label = _outlined_label(20, 6, Color(0.55, 0.9, 1.0))
+	_status_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	_status_label.offset_left = -300.0
+	_status_label.offset_top = -126.0
+	_status_label.offset_right = -28.0
+	_status_label.offset_bottom = -96.0
+	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_combat_group.add_child(_status_label)
+	_scan_label = _outlined_label(16, 5, Color(0.7, 1.0, 0.75))
+	_scan_label.set_anchors_preset(Control.PRESET_CENTER)
+	_scan_label.offset_left = -200.0
+	_scan_label.offset_right = 200.0
+	_scan_label.offset_top = 54.0
+	_scan_label.offset_bottom = 78.0
+	_scan_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_combat_group.add_child(_scan_label)
+	_story_card = PanelContainer.new()
+	_story_card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.04, 0.07, 0.1, 0.78)
+	style.border_color = Color(0.3, 0.6, 0.75, 0.8)
+	style.border_width_left = 3
+	style.set_content_margin_all(10)
+	_story_card.add_theme_stylebox_override("panel", style)
+	_story_card.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_story_card.offset_left = -330.0
+	_story_card.offset_right = 330.0
+	_story_card.offset_top = 150.0
+	var box := VBoxContainer.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_story_speaker = _outlined_label(16, 5, STORY_SPEAKER_COLOR)
+	_story_text = _outlined_label(18, 6, Color(0.92, 0.95, 1.0))
+	_story_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_story_text.custom_minimum_size = Vector2(620, 0)
+	box.add_child(_story_speaker)
+	box.add_child(_story_text)
+	_story_card.add_child(box)
+	_story_card.visible = false
+	add_child(_story_card)
+	for i in MAX_SCAN_MARKERS:
+		var marker := ColorRect.new()
+		marker.color = Color(0.7, 1.0, 0.75, 0.85)
+		marker.size = Vector2(14, 14)
+		marker.pivot_offset = Vector2(7, 7)
+		marker.rotation = PI / 4.0
+		marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		marker.visible = false
+		_combat_group.add_child(marker)
+		_scan_markers.append(marker)
+		_scan_targets.append(null)
+
+
+func _outlined_label(size: int, outline: int, color: Color) -> Label:
+	var label := Label.new()
+	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_constant_override("outline_size", outline)
+	label.add_theme_color_override("font_outline_color", Color.BLACK)
+	label.add_theme_color_override("font_color", color)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return label
+
+
+## The Charge receiver's meter under the crosshair; a negative fraction hides it.
+func set_charge(fraction: float) -> void:
+	if fraction < 0.0:
+		_charge_bar.visible = false
+		return
+	_charge_bar.visible = true
+	_charge_bar.value = fraction
+
+
+func set_gun_status(text: String) -> void:
+	_status_label.text = text
+
+
+func gun_status() -> String:
+	return _status_label.text
+
+
+## The Scanner's reading of the robot under the crosshair; an empty name clears it.
+func set_scan(name: String, health: float, maximum: float) -> void:
+	_scan_label.text = "" if name == "" else "%s  %d / %d" % [name.to_upper(), mini(ceili(health - 0.001), roundi(maximum)), roundi(maximum)]
+
+
+func scan_text() -> String:
+	return _scan_label.text
+
+
+## A story card at the top of the view: who speaks and the line. Never blocks play; it fades on
+## its own (plan: every line is skippable, nothing in the story gates progression).
+func show_story(speaker: String, text: String) -> void:
+	_story_speaker.text = speaker.to_upper()
+	_story_text.text = text
+	_story_card.visible = true
+	_story_card.modulate.a = 1.0
+	_story_left = STORY_CARD_TIME + text.length() * STORY_CARD_PER_CHAR
+
+
+func hide_story() -> void:
+	_story_left = 0.0
+	_story_queue.clear()
+	_story_card.visible = false
+
+
+## Shows a trigger's lines one after another ([[speaker, text], ...]); appends when a card is up.
+func queue_story(lines: Array) -> void:
+	for line in lines:
+		_story_queue.append(line)
+	if not _story_card.visible and not _story_queue.is_empty():
+		var first: Array = _story_queue.pop_front()
+		show_story(String(first[0]), String(first[1]))
+
+
+func story_queue_size() -> int:
+	return _story_queue.size()
+
+
+## The Scanner marks a robot through walls (EnemyDefinition.scanner_marked) while it is fitted:
+## a diamond over it each frame until it dies. The markers and their slots are a fixed set built
+## with the HUD, so marking builds nothing mid-wave; a full set reuses a dead robot's slot.
+func add_scan_target(camera: Camera3D, enemy: Enemy) -> void:
+	_scan_camera = camera
+	for i in _scan_targets.size():
+		var held := _scan_targets[i]
+		if held == null or not is_instance_valid(held) or not held.is_alive:
+			_scan_targets[i] = enemy
+			_scan_active = true
+			return
+
+
+func clear_scan_targets() -> void:
+	for i in _scan_targets.size():
+		_scan_targets[i] = null
+	for marker in _scan_markers:
+		marker.visible = false
+	_scan_active = false
+
+
+func visible_scan_markers() -> int:
+	var count := 0
+	for marker in _scan_markers:
+		if marker.visible:
+			count += 1
+	return count
+
+
+func _place_scan_markers() -> void:
+	var shown := 0
+	if _scan_camera != null and is_instance_valid(_scan_camera) and _combat_group.visible:
+		for enemy in _scan_targets:
+			if enemy == null or not is_instance_valid(enemy) or not enemy.is_alive or not enemy.is_inside_tree():
+				continue
+			var at := enemy.center() + Vector3.UP * 1.4
+			if _scan_camera.is_position_behind(at):
+				continue
+			var marker := _scan_markers[shown]
+			marker.position = _scan_camera.unproject_position(at) - marker.size * 0.5
+			marker.visible = true
+			shown += 1
+	for i in range(shown, _scan_markers.size()):
+		_scan_markers[i].visible = false
+
+
+func is_story_visible() -> bool:
+	return _story_card.visible
+
+
+func story_text() -> String:
+	return _story_text.text
 
 
 func set_capture_prompt_visible(value: bool) -> void:
