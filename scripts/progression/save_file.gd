@@ -128,6 +128,10 @@ static func _migrate_to_5(old: Dictionary) -> Dictionary:
 		if not unlocks.has("foundry"):
 			unlocks.append("foundry")
 		old["unlocks"] = unlocks
+	# The Milestone 4 Scrapyard log flag is the story's first salvage log.
+	var flags: Variant = old.get("story_flags", [])
+	if flags is Array and flags.has("scrapyard_log_1"):
+		flags[flags.find("scrapyard_log_1")] = "log_scrapyard_1"
 	var records: Variant = old.get("records", {})
 	if records is Dictionary and not old.has("xp"):
 		old["xp"] = maxi(int(records.get("credits_earned", 0)), 0)

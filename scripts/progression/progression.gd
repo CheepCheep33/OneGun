@@ -31,7 +31,7 @@ const LOW_MARK_CAP := 3
 const SCRAP_PER_CORE := 2
 const CORES_PER_ALLOY := 3
 const CORES_PER_CIRCUIT := 8
-const SCRAPYARD_LOG_FLAG := "scrapyard_log_1"
+const SCRAPYARD_LOG_FLAG := "log_scrapyard_1"
 
 var data: Dictionary = SaveFile.fresh()
 ## True when a save existed when the game started, so the bench can greet a returning player.
@@ -313,6 +313,16 @@ func is_area_open(area_id: String) -> bool:
 	return AREA_GATES.has(area_id) and is_wave_cleared(int(AREA_GATES[area_id]))
 
 
+## Why an open area cannot be entered right now ("" when it can): the Foundry's one attempt per
+## intermission.
+func area_block_reason(area_id: String) -> String:
+	if not is_area_open(area_id):
+		return "Opens when wave %d is cleared" % int(AREA_GATES.get(area_id, 0))
+	if area_id == "foundry" and is_foundry_spent():
+		return "One attempt per intermission: play a wave first"
+	return ""
+
+
 # ------------------------------------------------------------------ inventory
 
 func inventory() -> Array:
@@ -587,7 +597,7 @@ func refine_block_reason(uid: int) -> String:
 	var parts := Crafting.discounted(cost["parts"], craft_discount())
 	if credits < int(cost["credits"]):
 		return "Needs %d credits" % int(cost["credits"])
-	if not Crafting.can_afford(data["parts"], parts):
+	if not parts.is_empty() and not Crafting.can_afford(data["parts"], parts):
 		return "Needs " + Crafting.describe_cost(parts)
 	return ""
 
@@ -815,12 +825,165 @@ func record_scrapyard_extraction(cores: int, seconds: float) -> Dictionary:
 	var parts := scrapyard_parts(cores)
 	_add_parts(parts)
 	var reward := grant_item(Items.Rarity.RARE, &"", "scrapyard_extraction")
-	if first and not data["story_flags"].has(SCRAPYARD_LOG_FLAG):
-		data["story_flags"].append(SCRAPYARD_LOG_FLAG)
+	var extractions := int(state["extractions"])
+	for log_id in ["log_scrapyard_1", "log_scrapyard_3", "log_scrapyard_6"]:
+		if extractions >= int(log_id.get_slice("_", 2)):
+			fire_story(log_id)
 	PlaytestLog.event("scrapyard_extracted", {"cores": cores, "seconds": "%.1f" % seconds, "first": first})
 	inventory_changed.emit()
 	progress_changed.emit()
 	return {"parts": parts, "reward": reward, "first": first}
+
+
+# ------------------------------------------------------------------ foundry
+
+## Cores paid by every Foundry clear (Epic parts: the heat room's role is the expensive recipes).
+const FOUNDRY_CORES := 2
+## Cores paid by the Signal Tower's top floor; the Legendary core is extra, once per tier.
+const TOWER_TOP_CORES := 2
+## The Signal Tower floor whose first clear opens the Charge receiver.
+const TOWER_CHARGE_FLOOR := 5
+
+
+func foundry_state() -> Dictionary:
+	return data["areas"]["foundry"]
+
+
+## One attempt per intermission (plan): the Foundry is spent from entry until a main wave starts.
+func is_foundry_spent() -> bool:
+	return int(data["areas"]["foundry"]["spent"]) != 0
+
+
+func record_foundry_run() -> void:
+	var state: Dictionary = data["areas"]["foundry"]
+	state["runs"] = int(state["runs"]) + 1
+	state["spent"] = 1
+	progress_changed.emit()
+
+
+## A main wave started: the Foundry can be attempted again at the next intermission.
+func refresh_intermission() -> void:
+	data["areas"]["foundry"]["spent"] = 0
+
+
+## A cleared heat room: cores every time, a Rare, the Burst receiver (Rare) and its unlock on the
+## first clear, an Epic on a run without damage, and the logs. Returns
+## {"parts", "rewards": [items], "first", "perfect"}.
+func record_foundry_clear(perfect: bool, seconds: float) -> Dictionary:
+	var state: Dictionary = data["areas"]["foundry"]
+	var first := int(state["clears"]) == 0
+	state["clears"] = int(state["clears"]) + 1
+	var parts := {"cores": FOUNDRY_CORES}
+	_add_parts(parts)
+	var rewards: Array = []
+	if first:
+		add_unlock("foundry")
+		rewards.append(_grant_base(&"burst", Items.Rarity.RARE, "foundry_first_clear"))
+	else:
+		rewards.append(grant_item(Items.Rarity.RARE, &"", "foundry_clear"))
+	if perfect:
+		state["perfect"] = int(state["perfect"]) + 1
+		rewards.append(grant_item(Items.Rarity.EPIC, &"", "foundry_perfect"))
+		fire_story("log_foundry_perfect")
+	fire_story("log_foundry_1")
+	if int(state["clears"]) >= 3:
+		fire_story("log_foundry_3")
+	rewards = rewards.filter(func(item: Dictionary) -> bool: return not item.is_empty())
+	PlaytestLog.event("foundry_cleared", {"perfect": perfect, "seconds": "%.1f" % seconds, "first": first})
+	inventory_changed.emit()
+	progress_changed.emit()
+	return {"parts": parts, "rewards": rewards, "first": first, "perfect": perfect}
+
+
+## Makes an item of one base at a rarity with rolled affixes and takes it in.
+func _grant_base(base_id: StringName, rarity: int, source: String) -> Dictionary:
+	var base := Items.get_attachment(base_id)
+	if base == null:
+		return {}
+	var item := Loot.make_item(base, rarity, loot_rng)
+	_store_loot_state()
+	data["records"]["drops"] = int(data["records"]["drops"]) + 1
+	add_item(item, source)
+	return item
+
+
+# ------------------------------------------------------------------ signal tower
+
+func tower_state() -> Dictionary:
+	return data["areas"]["signal_tower"]
+
+
+func record_tower_run() -> void:
+	var state: Dictionary = data["areas"]["signal_tower"]
+	state["runs"] = int(state["runs"]) + 1
+
+
+## A tower floor cleared: the best floor, the Charge receiver at TOWER_CHARGE_FLOOR the first time,
+## the logs on floors 3, 6 and 9. Returns the items it granted (empty for most floors).
+func record_tower_floor(floor_number: int) -> Array:
+	var state: Dictionary = data["areas"]["signal_tower"]
+	state["best_floor"] = maxi(int(state["best_floor"]), floor_number)
+	var rewards: Array = []
+	if floor_number >= TOWER_CHARGE_FLOOR and add_unlock("signal_tower"):
+		rewards.append(_grant_base(&"charge", Items.Rarity.RARE, "tower_charge"))
+	if floor_number in [3, 6, 9]:
+		fire_story("log_tower_%d" % floor_number)
+	PlaytestLog.event("tower_floor", {"floor": floor_number})
+	progress_changed.emit()
+	return rewards.filter(func(item: Dictionary) -> bool: return not item.is_empty())
+
+
+## The top floor: an Epic and cores every time, the Overflow magazine (Rare) the first time, a
+## Legendary core once per Reforge tier, and the top log. Returns
+## {"parts", "rewards": [items], "first", "legendary_core"}.
+func record_tower_top(seconds: float) -> Dictionary:
+	var state: Dictionary = data["areas"]["signal_tower"]
+	var first := int(state["clears"]) == 0
+	state["clears"] = int(state["clears"]) + 1
+	var parts := {"cores": TOWER_TOP_CORES}
+	var legendary_core := int(state["core_tier"]) <= tier
+	if legendary_core:
+		state["core_tier"] = tier + 1
+		parts["legendary_cores"] = 1
+	_add_parts(parts)
+	var rewards: Array = [grant_item(Items.Rarity.EPIC, &"", "tower_top")]
+	if add_unlock("signal_tower_top"):
+		rewards.append(_grant_base(&"overflow", Items.Rarity.RARE, "tower_overflow"))
+	fire_story("log_tower_top")
+	PlaytestLog.event("tower_top", {"seconds": "%.1f" % seconds, "first": first, "legendary_core": legendary_core})
+	inventory_changed.emit()
+	progress_changed.emit()
+	return {"parts": parts, "rewards": rewards.filter(func(item: Dictionary) -> bool: return not item.is_empty()),
+		"first": first, "legendary_core": legendary_core}
+
+
+# ------------------------------------------------------------------ story
+
+## Fires a story trigger once per save: records it and queues it for the bench's Story tab.
+## Returns its lines the first time, empty after that or when the trigger has none.
+func fire_story(trigger: String) -> Array:
+	if not Story.has(trigger) or data["story_flags"].has(trigger):
+		return []
+	data["story_flags"].append(trigger)
+	data["story_queue"].append(trigger)
+	PlaytestLog.event("story", {"trigger": trigger})
+	return Story.lines_for(trigger)
+
+
+func has_seen_story(trigger: String) -> bool:
+	return data["story_flags"].has(trigger)
+
+
+## Triggers fired so far, oldest first (the bench's Story tab).
+func story_seen() -> Array:
+	return data["story_flags"].filter(func(t: String) -> bool: return Story.has(t))
+
+
+## Triggers fired since the bench last showed them; reading empties the queue.
+func take_story_queue() -> Array:
+	var queued: Array = data["story_queue"].duplicate()
+	data["story_queue"].clear()
+	return queued
 
 
 # ------------------------------------------------------------------ save

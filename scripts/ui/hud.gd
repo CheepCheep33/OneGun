@@ -24,6 +24,7 @@ const FPS_WINDOW := 0.5
 const STORY_CARD_TIME := 4.0
 const STORY_CARD_PER_CHAR := 0.03
 const STORY_CARD_FADE := 0.6
+const MAX_SCAN_MARKERS := 6
 const STORY_SPEAKER_COLOR := Color(0.55, 0.9, 1.0)
 
 var _vignette_alpha := 0.0
@@ -44,6 +45,13 @@ var _story_card: PanelContainer
 var _story_speaker: Label
 var _story_text: Label
 var _story_left := 0.0
+## Lines waiting for the card, [speaker, text] each, shown in order.
+var _story_queue: Array = []
+## Scanner optic: a diamond over each marked robot (turrets), reused in turn; see set_scan_targets.
+var _scan_markers: Array[Control] = []
+var _scan_targets: Array[Enemy] = []
+var _scan_active := false
+var _scan_camera: Camera3D
 
 @onready var _vignette: ColorRect = $DamageVignette
 @onready var _crosshair: Control = $Crosshair
@@ -115,8 +123,13 @@ func _process(delta: float) -> void:
 		_story_left -= delta
 		if _story_left <= 0.0:
 			_story_card.visible = false
+			if not _story_queue.is_empty():
+				var line: Array = _story_queue.pop_front()
+				show_story(String(line[0]), String(line[1]))
 		elif _story_left < STORY_CARD_FADE:
 			_story_card.modulate.a = _story_left / STORY_CARD_FADE
+	if _scan_active:
+		_place_scan_markers()
 	for i in _notes.size():
 		if _note_ages[i] < 0.0:
 			continue
@@ -282,6 +295,12 @@ func show_pickup(item: Dictionary, destination: String) -> void:
 			text += "  →  inventory full, turned to parts"
 		"bumped":
 			text += "  →  tray (a lesser item became parts)"
+	show_note(text, Items.rarity_color(item))
+	_pickup_sound.play()
+
+
+## A line in the note stack (a pickup, a level, Phoenix): the free label or the oldest one.
+func show_note(text: String, color: Color) -> void:
 	var index := -1
 	var oldest := 0
 	for i in _notes.size():
@@ -294,12 +313,11 @@ func show_pickup(item: Dictionary, destination: String) -> void:
 		index = oldest
 	var note := _notes[index]
 	note.text = text
-	note.add_theme_color_override("font_color", Items.rarity_color(item))
+	note.add_theme_color_override("font_color", color)
 	note.modulate.a = 1.0
 	note.visible = true
 	_note_ages[index] = 0.0
 	_pickup_notes.move_child(note, _pickup_notes.get_child_count() - 1)
-	_pickup_sound.play()
 
 
 func pickup_note_count() -> int:
@@ -317,6 +335,10 @@ func show_wave_cleared(number: int, bonus: int, first_clear: bool, granted: Dict
 	if not granted.is_empty():
 		detail += "\n+ %s  ·  %s" % [Items.display_name(granted), Items.rarity_name(granted)]
 	show_banner("WAVE %d CLEARED" % number, detail)
+
+
+func banner_detail() -> String:
+	return _banner_detail.text
 
 
 ## The centre banner (a wave clear, a Scrapyard extraction), faded in.
@@ -394,6 +416,17 @@ func _build_milestone_5_widgets() -> void:
 	_story_card.add_child(box)
 	_story_card.visible = false
 	add_child(_story_card)
+	for i in MAX_SCAN_MARKERS:
+		var marker := ColorRect.new()
+		marker.color = Color(0.7, 1.0, 0.75, 0.85)
+		marker.size = Vector2(14, 14)
+		marker.pivot_offset = Vector2(7, 7)
+		marker.rotation = PI / 4.0
+		marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		marker.visible = false
+		_combat_group.add_child(marker)
+		_scan_markers.append(marker)
+		_scan_targets.append(null)
 
 
 func _outlined_label(size: int, outline: int, color: Color) -> Label:
@@ -444,7 +477,67 @@ func show_story(speaker: String, text: String) -> void:
 
 func hide_story() -> void:
 	_story_left = 0.0
+	_story_queue.clear()
 	_story_card.visible = false
+
+
+## Shows a trigger's lines one after another ([[speaker, text], ...]); appends when a card is up.
+func queue_story(lines: Array) -> void:
+	for line in lines:
+		_story_queue.append(line)
+	if not _story_card.visible and not _story_queue.is_empty():
+		var first: Array = _story_queue.pop_front()
+		show_story(String(first[0]), String(first[1]))
+
+
+func story_queue_size() -> int:
+	return _story_queue.size()
+
+
+## The Scanner marks a robot through walls (EnemyDefinition.scanner_marked) while it is fitted:
+## a diamond over it each frame until it dies. The markers and their slots are a fixed set built
+## with the HUD, so marking builds nothing mid-wave; a full set reuses a dead robot's slot.
+func add_scan_target(camera: Camera3D, enemy: Enemy) -> void:
+	_scan_camera = camera
+	for i in _scan_targets.size():
+		var held := _scan_targets[i]
+		if held == null or not is_instance_valid(held) or not held.is_alive:
+			_scan_targets[i] = enemy
+			_scan_active = true
+			return
+
+
+func clear_scan_targets() -> void:
+	for i in _scan_targets.size():
+		_scan_targets[i] = null
+	for marker in _scan_markers:
+		marker.visible = false
+	_scan_active = false
+
+
+func visible_scan_markers() -> int:
+	var count := 0
+	for marker in _scan_markers:
+		if marker.visible:
+			count += 1
+	return count
+
+
+func _place_scan_markers() -> void:
+	var shown := 0
+	if _scan_camera != null and is_instance_valid(_scan_camera) and _combat_group.visible:
+		for enemy in _scan_targets:
+			if enemy == null or not is_instance_valid(enemy) or not enemy.is_alive or not enemy.is_inside_tree():
+				continue
+			var at := enemy.center() + Vector3.UP * 1.4
+			if _scan_camera.is_position_behind(at):
+				continue
+			var marker := _scan_markers[shown]
+			marker.position = _scan_camera.unproject_position(at) - marker.size * 0.5
+			marker.visible = true
+			shown += 1
+	for i in range(shown, _scan_markers.size()):
+		_scan_markers[i].visible = false
 
 
 func is_story_visible() -> bool:

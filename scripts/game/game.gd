@@ -12,10 +12,13 @@ const MAIN_ARENA := preload("res://scenes/arena/arena.tscn")
 const AREA_SCENES := {
 	"firing_range": "res://scenes/areas/firing_range.tscn",
 	"scrapyard": "res://scenes/areas/scrapyard.tscn",
+	"foundry": "res://scenes/areas/foundry.tscn",
+	"signal_tower": "res://scenes/areas/signal_tower.tscn",
 }
-const AREA_NAMES := {"firing_range": "Firing Range", "scrapyard": "Scrapyard"}
-## The first Scrapyard extraction recovers this log (the story itself arrives with Milestone 5).
-const SCRAPYARD_LOG := "Salvage log: calibration unit 06 scrapped after failing the Foreman's test."
+const AREA_NAMES := {"firing_range": "Firing Range", "scrapyard": "Scrapyard", "foundry": "Foundry", "signal_tower": "Signal Tower"}
+## First wave clears that also find an arena log (the story's found files).
+const ARENA_LOG_WAVES := [12, 18]
+const NOTE_COLOR := Color(0.6, 0.9, 1.0)
 ## Drop nodes kept ready outside the tree, so a drop landing mid-wave builds nothing.
 const DROP_RESERVE := 12
 
@@ -38,6 +41,8 @@ var _boss: Enemy
 var _drop_reserve: Array[LootDrop] = []
 ## Drops built by _spawn_drop because the reserve was empty (the performance gate expects zero).
 var drop_reserve_misses := 0
+## Story triggers fired before the current banner, so it can show the logs that just turned up.
+var _story_mark := 0
 
 @onready var arena: Node3D = $Arena
 @onready var player: Player = $Player
@@ -63,6 +68,13 @@ func _ready() -> void:
 	player.pistol.reload_started.connect(hud.show_reload)
 	player.pistol.reload_finished.connect(hud.hide_reload)
 	player.pistol.hit_landed.connect(hud.show_hit_marker)
+	player.pistol.charge_changed.connect(hud.set_charge)
+	player.pistol.status_changed.connect(hud.set_gun_status)
+	player.pistol.scanned.connect(hud.set_scan)
+	player.phoenix_triggered.connect(_on_phoenix)
+	player.bullet_time_changed.connect(_on_bullet_time)
+	Progression.level_up.connect(_on_level_up)
+	wave_runner.enemy_spawned.connect(_on_enemy_spawned)
 	wave_runner.setup(player, arena)
 	wave_runner.enemy_killed.connect(_on_enemy_killed)
 	wave_runner.remaining_changed.connect(_on_remaining_changed)
@@ -74,6 +86,7 @@ func _ready() -> void:
 	pause_menu.quit_requested.connect(get_tree().quit)
 	bench.start_wave_requested.connect(start_wave)
 	bench.area_requested.connect(enter_area)
+	bench.climb_requested.connect(climb)
 	touch_controls.setup(player)
 	touch_controls.activated.connect(_on_touch_activated)
 	touch_controls.pause_requested.connect(pause)
@@ -119,7 +132,9 @@ func _process(_delta: float) -> void:
 	_had_control = _had_control or has_control
 	if has_control and not _combat_started and _pending_wave:
 		_combat_started = true
-		wave_runner.start(_pending_wave, _pending_scale)
+		# The Signal Tower starts its floors itself (floor_started), with their modifiers.
+		if not arena.has_signal("floor_started"):
+			wave_runner.start(_pending_wave, _pending_scale)
 		if state == State.AREA and arena.has_method("start_run"):
 			arena.start_run()
 	hud.set_capture_prompt_visible(not has_control and not _had_control)
@@ -152,6 +167,8 @@ func _notification(what: int) -> void:
 func open_bench() -> void:
 	state = State.BENCH
 	_pending_wave = null
+	Engine.time_scale = 1.0
+	_set_encounter_modifiers({})
 	wave_runner.stop()
 	wave_runner.clear_enemies()
 	wave_runner.warm_up() # top the enemy reserve up while nothing is happening
@@ -183,6 +200,7 @@ func start_wave(number: int) -> void:
 		_swap_arena(MAIN_ARENA, "")
 	current_wave = number
 	kills = 0
+	Progression.refresh_intermission()
 	_pending_wave = wave
 	_pending_scale = Progression.reward_multiplier(number)
 	_combat_started = false
@@ -200,7 +218,7 @@ func start_wave(number: int) -> void:
 
 ## Closes the bench and loads a side area in place of the arena (plan: scene swap for side areas).
 func enter_area(area_id: String) -> void:
-	if not AREA_SCENES.has(area_id) or not Progression.is_area_open(area_id):
+	if not AREA_SCENES.has(area_id) or Progression.area_block_reason(area_id) != "":
 		push_warning("Area '%s' is not open." % area_id)
 		return
 	bench.close()
@@ -216,6 +234,12 @@ func enter_area(area_id: String) -> void:
 		arena.status_changed.connect(hud.set_wave_progress_text)
 	if arena.has_signal("extracted"):
 		arena.extracted.connect(_on_area_extracted)
+	if arena.has_signal("cleared"):
+		arena.cleared.connect(_on_area_cleared)
+	if arena.has_signal("floor_started"):
+		arena.floor_started.connect(_on_floor_started)
+	if arena.has_signal("pad_reached"):
+		arena.pad_reached.connect(_on_pad_reached)
 	# An area with a spawn schedule (the Scrapyard) runs it on the wave runner once the player has
 	# control, scaled like the next wave the player would fight.
 	if arena.has_method("encounter_wave"):
@@ -255,9 +279,22 @@ func _reset_encounter() -> void:
 	projectiles.clear_all()
 	_clear_drops()
 	_clear_boss()
+	Engine.time_scale = 1.0
+	_set_encounter_modifiers({})
+	var effects := Progression.player_effects()
+	player.apply_skills(effects)
+	LootDrop.pickup_scale = 1.0 + float(effects.get("pickup_scale", 0.0))
 	player.revive(arena.get_player_start())
 	player.pistol.apply_build(Progression.build_stats(), Progression.equipped())
+	hud.clear_scan_targets()
 	hud.set_health(player.health, player.max_health)
+
+
+## The Signal Tower's floor rules, or none ({}): robot speed and armour, no reloads, crits only.
+func _set_encounter_modifiers(modifiers: Dictionary) -> void:
+	wave_runner.set_modifiers(float(modifiers.get("speed", 1.0)), float(modifiers.get("armor", 0.0)))
+	player.pistol.no_reloads = bool(modifiers.get("no_reloads", false))
+	ShotPipeline.crits_only = bool(modifiers.get("crits_only", false))
 
 
 func _take_control() -> void:
@@ -306,6 +343,10 @@ func _on_enemy_killed(enemy: Enemy, credits: int) -> void:
 	hud.set_kills(kills)
 	Progression.record_kill(credits)
 	hud.show_credit_gain(credits)
+	player.pistol.notify_kill()
+	player.notify_kill()
+	if enemy.definition.is_boss and Progression.record_boss_kill(enemy.definition.id):
+		hud.show_note("Boss down: +1 skill point", NOTE_COLOR)
 	# A boss's adds pay credits but drop nothing, so a boss fight cannot be farmed for loot.
 	if enemy.summoned:
 		return
@@ -416,9 +457,19 @@ func _on_remaining_changed(remaining: int, total: int) -> void:
 
 
 func _on_wave_cleared(wave: WaveDefinition, duration: float) -> void:
+	if state == State.AREA:
+		# A side area's schedule ran out of robots: the Foundry pays, the tower lights its pad.
+		if arena.has_method("on_encounter_cleared"):
+			var mark: int = Progression.data["story_flags"].size()
+			arena.on_encounter_cleared(duration)
+			var flags: Array = Progression.data["story_flags"]
+			for i in range(mark, flags.size()):
+				hud.queue_story(Story.lines_for(String(flags[i])))
+		return
 	if state != State.COMBAT:
 		return
 	state = State.CLEARED
+	_story_mark = Progression.data["story_flags"].size()
 	var bonus := roundi(wave.completion_bonus * (2 if wave.is_boss_wave else 1) * Progression.bonus_multiplier())
 	var first := Progression.record_wave_cleared(wave.number, bonus, duration)
 	# Success auto-collects whatever is still on the floor (plan: outcomes are explicit).
@@ -429,7 +480,17 @@ func _on_wave_cleared(wave: WaveDefinition, duration: float) -> void:
 	if first:
 		granted = Progression.grant_item(Loot.FIRST_CLEAR_RARITY, &"", "first_clear_%d" % wave.number)
 	hud.show_wave_cleared(wave.number, bonus, first, granted)
-	var timer := get_tree().create_timer(CLEARED_BANNER_TIME, false)
+	# VERA's line for a first clear waits for the bench (its greeting); a log shows on the banner.
+	var story_time := 0.0
+	if first:
+		Progression.fire_story("wave_%d" % wave.number)
+		if wave.number in ARENA_LOG_WAVES:
+			Progression.fire_story("log_arena_%d" % wave.number)
+		var logs := _new_log_lines()
+		if logs != "":
+			hud.show_banner("WAVE %d CLEARED" % wave.number, hud.banner_detail() + "\n" + logs)
+			story_time = 2.0
+	var timer := get_tree().create_timer(CLEARED_BANNER_TIME + story_time, false)
 	await timer.timeout
 	if state == State.CLEARED:
 		open_bench()
@@ -447,6 +508,7 @@ func _on_area_extracted(cores: int, seconds: float) -> void:
 	for drop in drops.get_children():
 		if drop is LootDrop:
 			drop.collect()
+	_story_mark = Progression.data["story_flags"].size()
 	var result := Progression.record_scrapyard_extraction(cores, seconds)
 	var lines := PackedStringArray(["%d scrap cores" % cores])
 	var parts: Dictionary = result["parts"]
@@ -455,10 +517,11 @@ func _on_area_extracted(cores: int, seconds: float) -> void:
 	var reward: Dictionary = result["reward"]
 	if not reward.is_empty():
 		lines.append("+ %s  ·  %s" % [Items.display_name(reward), Items.rarity_name(reward)])
-	if result["first"]:
-		lines.append(SCRAPYARD_LOG)
+	var logs := _new_log_lines()
+	if logs != "":
+		lines.append(logs)
 	hud.show_banner("EXTRACTED", "\n".join(lines))
-	var timer := get_tree().create_timer(CLEARED_BANNER_TIME + (1.5 if result["first"] else 0.0), false)
+	var timer := get_tree().create_timer(CLEARED_BANNER_TIME + (2.0 if logs != "" else 0.0), false)
 	await timer.timeout
 	if state == State.CLEARED:
 		open_bench()
@@ -472,6 +535,8 @@ func _on_player_died() -> void:
 	touch_controls.set_enabled(false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	Progression.record_death(current_wave, wave_runner.elapsed)
+	Engine.time_scale = 1.0
+	Progression.fire_story("first_death") # read at the bench
 	if current_area != "":
 		hud.show_death(current_wave, kills, Progression.credits, String(AREA_NAMES.get(current_area, current_area)))
 	else:
@@ -481,6 +546,10 @@ func _on_player_died() -> void:
 func _on_boss_spawned(enemy: Enemy) -> void:
 	_boss = enemy
 	hud.show_boss(enemy.definition.display_name, enemy.health, enemy.max_health)
+	# The intro card shows on the boss's first appearance only.
+	hud.queue_story(Progression.fire_story("boss_%s" % enemy.definition.id))
+	if enemy.has_signal("phase_changed") and not enemy.phase_changed.is_connected(_on_boss_phase_changed):
+		enemy.phase_changed.connect(_on_boss_phase_changed)
 	if not enemy.health_changed.is_connected(hud.set_boss_health):
 		enemy.health_changed.connect(hud.set_boss_health)
 	if not enemy.tree_exited.is_connected(_clear_boss):
@@ -511,3 +580,110 @@ func _capture_mouse() -> void:
 func _has_control() -> bool:
 	return touch_controls.active or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED \
 		or DisplayServer.get_name() == "headless"
+
+
+# ------------------------------------------------------------------ Milestone 5 events
+
+## Lines of the logs fired since _story_mark, for an area or wave banner ("" when none).
+func _new_log_lines() -> String:
+	var flags: Array = Progression.data["story_flags"]
+	var texts := PackedStringArray()
+	for i in range(_story_mark, flags.size()):
+		if Story.is_log(String(flags[i])):
+			texts.append(Story.describe(String(flags[i])))
+	_story_mark = flags.size()
+	return "\n".join(texts)
+
+
+func _on_boss_phase_changed(index: int) -> void:
+	hud.queue_story(Progression.fire_story("guardian_phase_%d" % (index + 1)))
+
+
+func _on_enemy_spawned(enemy: Enemy) -> void:
+	if enemy.definition.scanner_marked and bool(player.pistol.stats.behaviours.get("scanner", false)):
+		hud.add_scan_target(player.camera, enemy)
+
+
+func _on_level_up(level: int) -> void:
+	if state != State.BENCH:
+		hud.show_note("Level %d: +1 skill point" % level, NOTE_COLOR)
+
+
+func _on_phoenix() -> void:
+	hud.show_note("PHOENIX: back on your feet", Color(1.0, 0.6, 0.25))
+
+
+func _on_bullet_time(active: bool) -> void:
+	if active:
+		hud.show_note("BULLET TIME", Color(0.7, 0.85, 1.0))
+
+
+## A Signal Tower floor starts: its schedule on the wave runner with the floor's rules.
+func _on_floor_started(wave: WaveDefinition, modifiers: Dictionary) -> void:
+	if state != State.AREA:
+		return
+	_pending_wave = wave
+	_set_encounter_modifiers(modifiers)
+	wave_runner.start(wave, _pending_scale)
+
+
+## Standing on a lit loadout pad opens the gunsmith in pad mode; the game waits there.
+func _on_pad_reached(floor_number: int) -> void:
+	if state != State.AREA:
+		return
+	get_tree().paused = true
+	touch_controls.set_enabled(false)
+	touch_controls.release_all()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	hud.set_combat_visible(false)
+	var next := floor_number + 1
+	bench.open_pad(floor_number, "%s, %s" % [arena.floor_name(next), arena.floor_modifier_text(next)])
+
+
+## Pad mode's Climb: the swapped build goes on the gun, and the next floor starts.
+func climb() -> void:
+	if state != State.AREA or not arena.has_method("start_floor"):
+		return
+	bench.close()
+	Progression.save()
+	player.pistol.apply_build(Progression.build_stats(), Progression.equipped())
+	hud.clear_scan_targets()
+	hud.set_combat_visible(true)
+	touch_controls.set_enabled(true)
+	get_tree().paused = false
+	_take_control()
+	arena.start_floor(arena.floor_number + 1)
+
+
+## The Foundry's clear or the Signal Tower's top: the run pays, the floor loot is collected and
+## the bench opens after the banner.
+func _on_area_cleared(perfect: bool, seconds: float) -> void:
+	if state != State.AREA:
+		return
+	state = State.CLEARED
+	wave_runner.stop()
+	wave_runner.clear_enemies()
+	projectiles.clear_all()
+	for drop in drops.get_children():
+		if drop is LootDrop:
+			drop.collect()
+	_story_mark = Progression.data["story_flags"].size()
+	var result: Dictionary
+	var title := "CLEARED"
+	if current_area == "foundry":
+		result = Progression.record_foundry_clear(perfect, seconds)
+		title = "FOUNDRY CLEARED" + ("  ·  UNTOUCHED" if perfect else "")
+	else:
+		result = Progression.record_tower_top(seconds)
+		title = "TOP OF THE TOWER"
+	var lines := PackedStringArray(["+" + Crafting.describe_cost(result["parts"])])
+	for item in result["rewards"]:
+		lines.append("+ %s  ·  %s" % [Items.display_name(item), Items.rarity_name(item)])
+	var logs := _new_log_lines()
+	if logs != "":
+		lines.append(logs)
+	hud.show_banner(title, "\n".join(lines))
+	var timer := get_tree().create_timer(CLEARED_BANNER_TIME + (2.0 if logs != "" else 0.0), false)
+	await timer.timeout
+	if state == State.CLEARED:
+		open_bench()

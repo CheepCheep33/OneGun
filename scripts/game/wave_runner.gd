@@ -17,9 +17,11 @@ signal enemy_killed(enemy: Enemy, credits: int)
 signal remaining_changed(remaining: int, total: int)
 signal wave_cleared(wave: WaveDefinition, duration: float)
 signal boss_spawned(enemy: Enemy)
+## Every spawn, the boss's adds included (the HUD's Scanner markers follow turrets with it).
+signal enemy_spawned(enemy: Enemy)
 
 const WAVE_DIR := "res://data/waves/"
-const WAVE_COUNT := 15
+const WAVE_COUNT := 20
 ## Most nodes of one enemy scene kept in the reserve.
 const RESERVE_CAP := 16
 ## Enemies readied per frame while the reserve fills behind the first bench.
@@ -36,6 +38,10 @@ var running := false
 var elapsed := 0.0
 ## Multiplier for enemy health and credits this wave (wave tier and Reforge tier).
 var scale := 1.0
+## The encounter's modifiers for every robot it spawns (the Signal Tower's floors): a movement
+## speed multiplier and extra flat armour. The game sets them; 1 and 0 for the main waves.
+var speed_modifier := 1.0
+var armor_bonus := 0.0
 
 var _player: Player
 var _arena: Node
@@ -70,6 +76,11 @@ static func all_waves() -> Array[WaveDefinition]:
 func setup(player: Player, arena: Node) -> void:
 	_player = player
 	_arena = arena
+
+
+func set_modifiers(speed := 1.0, armor := 0.0) -> void:
+	speed_modifier = speed
+	armor_bonus = armor
 
 
 ## Fills the reserve, a few enemies a frame, with as many of each scene as any authored wave can
@@ -254,6 +265,8 @@ func spawn_at(position: Vector3, definition: EnemyDefinition = null, scene: Pack
 	enemy.health_scale = scale
 	enemy.target = _player
 	enemy.summoned = false
+	enemy.speed_modifier = speed_modifier
+	enemy.armor_bonus = armor_bonus
 	_container.add_child(enemy)
 	enemy.reset()
 	enemy.global_position = position
@@ -264,6 +277,7 @@ func spawn_at(position: Vector3, definition: EnemyDefinition = null, scene: Pack
 	if not enemy.summon_requested.is_connected(_on_summon_requested):
 		enemy.summon_requested.connect(_on_summon_requested)
 	_spawned += 1
+	enemy_spawned.emit(enemy)
 	if definition.is_boss:
 		boss_spawned.emit(enemy)
 	return enemy

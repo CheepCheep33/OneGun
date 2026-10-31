@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="EnemyDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/enemy_definition.gd" id="1_def"]
+[ext_resource type="PackedScene" path="res://scenes/enemies/swarm_drone.tscn" id="2_drone_scene"]
+[ext_resource type="Resource" path="res://data/enemies/swarm_drone.tres" id="3_drone"]
+
+[resource]
+script = ExtResource("1_def")
+id = &"core_guardian"
+display_name = "Core Guardian"
+max_health = 1400.0
+move_speed = 2.3
+attack_damage = 26.0
+attack_range = 3.0
+attack_windup = 0.75
+attack_cooldown = 1.1
+credit_reward = 260
+color = Color(0.45, 0.9, 1, 1)
+counts_as = 3.0
+is_boss = true
+first_kill_legendary = true
+armor = 6.0
+weak_point_offset = Vector3(0, 1.9, -0.75)
+weak_point_radius = 0.75
+ranged = true
+preferred_range = 12.0
+retreat_range = 6.0
+max_fire_range = 22.0
+spread_near_degrees = 2.0
+spread_far_degrees = 6.0
+projectile_speed = 16.0
+projectile_lifetime = 4.0
+summon_scene = ExtResource("2_drone_scene")
+summon_definition = ExtResource("3_drone")
+max_summons = 6

@@ -23,7 +23,7 @@ func _test_drop_rates() -> void:
 	var drone: EnemyDefinition = load("res://data/enemies/swarm_drone.tres")
 	var warden: EnemyDefinition = load("res://data/enemies/warden.tres")
 	var bases := Progression.droppable_bases()
-	check(bases.size() == 4, "four bases can drop at the start: long, penetrator, extended, fast-mag (%d)" % bases.size())
+	check(bases.size() == 6, "six bases can drop at the start: long, penetrator and short barrels, extended, fast-mag and drum (%d)" % bases.size())
 	var generator := TestCase.rng(77)
 	var counts := [0, 0, 0, 0, 0]
 	for i in KILLS:
@@ -95,9 +95,9 @@ func _test_unlock_gates() -> void:
 	check(Progression.is_area_open("firing_range"), "clearing wave 2 opens the Firing Range")
 	for wave in [3, 4, 5]:
 		Progression.record_wave_cleared(wave, 0, 1.0)
-	check(Progression.is_base_unlocked(automatic) and Progression.droppable_bases().size() == 9, "clearing wave 5 unlocks Automatic and it joins the drop pool with the muzzle and ammo bases (%d)" % Progression.droppable_bases().size())
-	check(Progression.is_slot_open(&"muzzle") and Progression.is_slot_open(&"ammo") and Progression.droppable_bases(&"muzzle").size() == 2 and Progression.droppable_bases(&"ammo").size() == 2,
-		"the muzzle and ammo slots open at the Warden with two bases each")
+	check(Progression.is_base_unlocked(automatic) and Progression.droppable_bases().size() == 16, "clearing wave 5 unlocks Automatic and it joins the drop pool with the muzzle and ammo bases (%d)" % Progression.droppable_bases().size())
+	check(Progression.is_slot_open(&"muzzle") and Progression.is_slot_open(&"ammo") and Progression.droppable_bases(&"muzzle").size() == 3 and Progression.droppable_bases(&"ammo").size() == 6,
+		"the muzzle and ammo slots open at the Warden with three and six bases")
 	check(Progression.droppable_bases(&"receiver").size() == 1 and Progression.droppable_bases(&"receiver")[0].id == &"automatic", "the drop pool can be limited to one slot")
 	Progression.reset()
 

@@ -31,6 +31,19 @@ func seconds(duration: float) -> void:
 	await driver.seconds(duration)
 
 
+## Starts wave 1 and stops its spawns once the game has really started it. The game starts the
+## wave runner from _process, which a burst of physics frames can run ahead of, so this waits for
+## the runner itself: a robot spawned before then would be cleared by the late start.
+func start_quiet_wave(game: Node) -> void:
+	game.start_wave(1)
+	for i in 30:
+		await tree().process_frame
+		if game.wave_runner.running:
+			break
+	game.wave_runner.stop()
+	await physics_frames(1)
+
+
 func tree() -> SceneTree:
 	return driver.get_tree()
 

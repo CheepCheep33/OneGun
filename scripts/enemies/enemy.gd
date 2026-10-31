@@ -105,6 +105,7 @@ func reset() -> void:
 	clear_statuses()
 	collision_layer = _base_collision_layer
 	collision_mask = _base_collision_mask
+	set_physics_process(true) # a reserve body may come back from a paused state
 	health = max_health
 	_visual.scale = Vector3.ONE * 0.2
 	_set_glow(Color.BLACK)

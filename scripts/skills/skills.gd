@@ -21,8 +21,8 @@ const MAX_LEVEL := 50
 ## Experience to reach level n + 1 from level n: XP_BASE * XP_GROWTH^(n - 1). Kills pay their
 ## definition's credit reward in experience, scaled like credits; a clear pays its bonus. Tuned so
 ## a first run to wave 20 reaches about level 15 (see GAME_PLAN.md, "Starting tuning values").
-const XP_BASE := 40.0
-const XP_GROWTH := 1.2
+const XP_BASE := 80.0
+const XP_GROWTH := 1.35
 
 static var _data: SkillTreeData
 static var _by_id: Dictionary = {}

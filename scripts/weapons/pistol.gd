@@ -81,6 +81,9 @@ var overclock_left := 0.0
 var overheat_left := 0.0
 ## Charge receiver: seconds the trigger has been held for the current charge, -1 when not charging.
 var charge_held := -1.0
+## Set by the Signal Tower's "No reloads" floor: the gun never reloads and every kill fills the
+## magazine instead. Cleared by apply_build.
+var no_reloads := false
 
 var _camera: Camera3D
 var _shooter_rid: RID
@@ -151,6 +154,7 @@ func apply_build(new_stats: WeaponStats, equipped_items: Dictionary = {}) -> voi
 	_burst_left = 0
 	_trigger_held = false
 	charge_held = -1.0
+	no_reloads = false
 	overclock_left = 0.0
 	overheat_left = 0.0
 	_reload_held = 0.0
@@ -178,6 +182,7 @@ func apply_stats(new_stats: WeaponStats) -> void:
 func setup(camera: Camera3D, shooter_rid: RID) -> void:
 	_camera = camera
 	_shooter_rid = shooter_rid
+	_scan_query.exclude = [shooter_rid]
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -244,6 +249,8 @@ func notify_kill() -> void:
 	if not enabled:
 		return
 	var refill := int(stats.behaviours.get("kill_refill", 0))
+	if no_reloads:
+		refill = stats.magazine_size
 	if stats.extra_percent("hot_swap") > 0.0 and _hot_swap_left <= 0.0 and ammo < stats.magazine_size:
 		_hot_swap_left = HOT_SWAP_COOLDOWN
 		refill = stats.magazine_size
@@ -392,7 +399,6 @@ func _scan() -> void:
 		return
 	_scan_query.from = _camera.global_position
 	_scan_query.to = _camera.global_position - _camera.global_basis.z * SCAN_RANGE
-	_scan_query.exclude = [_shooter_rid]
 	var hit := get_world_3d().direct_space_state.intersect_ray(_scan_query)
 	var enemy := hit.get("collider") as Enemy if not hit.is_empty() else null
 	if enemy == null or not enemy.is_alive:
@@ -527,6 +533,8 @@ func _play_shot_feedback() -> void:
 
 
 func _start_reload() -> void:
+	if no_reloads:
+		return
 	if overclock_left > 0.0 and ammo > 0:
 		return # Overclock runs on what is loaded; the reload waits for an empty magazine.
 	is_reloading = true

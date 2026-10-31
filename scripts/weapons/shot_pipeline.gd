@@ -23,6 +23,11 @@ const SHIELD_GROUP := "shields"
 ## Non-enemy targets a blast still reaches: the Firing Range's dummies.
 const BLAST_TARGET_GROUP := "blast_targets"
 
+## The Signal Tower's "Only crits count" floor: a hit that is not a critical hit does nothing,
+## and area damage does nothing. Set by the tower for its floor, cleared when it ends.
+static var crits_only := false
+
+
 ## State shared by every ray of one trigger pull.
 class ShotState:
 	extends RefCounted
@@ -134,7 +139,7 @@ static func apply_hit(target: Node, position: Vector3, direction: Vector3, stats
 		context.target_health_fraction = enemy.health_fraction()
 		context.target_armored = enemy.is_armored()
 	var roll := WeaponStats.resolve_shot(stats, context, shot.rng)
-	if not roll.in_range:
+	if not roll.in_range or (crits_only and not roll.is_crit):
 		return result
 	var damage := roll.damage
 	# Weak points multiply after crits (plan: weak points) and ignore armour.
@@ -223,7 +228,7 @@ static func shatter(center: Vector3, damage: float, shot: ShotState) -> Array[Hi
 static func area_damage(scene: Node, center: Vector3, radius: float, damage: float, shot: ShotState = null,
 		as_status := false) -> Array[HitResult]:
 	var hits: Array[HitResult] = []
-	if damage <= 0.0 or scene == null or not scene.is_inside_tree():
+	if damage <= 0.0 or crits_only or scene == null or not scene.is_inside_tree():
 		return hits
 	var reach := radius + BLAST_BODY_ALLOWANCE
 	var tree := scene.get_tree()

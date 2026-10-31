@@ -1,0 +1,113 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/enemies/turret.gd" id="1_turret"]
+[ext_resource type="Resource" path="res://data/enemies/turret.tres" id="2_def"]
+[ext_resource type="AudioStream" path="res://assets/audio/placeholder_enemy_attack.wav" id="3_attack"]
+[ext_resource type="AudioStream" path="res://assets/audio/placeholder_enemy_death.wav" id="4_death"]
+
+[sub_resource type="CylinderShape3D" id="Shape_body"]
+height = 1.9
+radius = 0.6
+
+[sub_resource type="StandardMaterial3D" id="Mat_body"]
+resource_name = "placeholder_turret_body"
+albedo_color = Color(0.38, 0.36, 0.34, 1)
+metallic = 0.3
+roughness = 0.5
+emission_enabled = true
+emission = Color(0, 0, 0, 1)
+
+[sub_resource type="CylinderMesh" id="Mesh_body"]
+material = SubResource("Mat_body")
+top_radius = 0.45
+bottom_radius = 0.65
+height = 1.2
+radial_segments = 12
+
+[sub_resource type="StandardMaterial3D" id="Mat_head"]
+resource_name = "placeholder_turret_head"
+albedo_color = Color(0.5, 0.46, 0.4, 1)
+metallic = 0.3
+roughness = 0.45
+
+[sub_resource type="BoxMesh" id="Mesh_head"]
+material = SubResource("Mat_head")
+size = Vector3(0.8, 0.45, 0.9)
+
+[sub_resource type="CylinderMesh" id="Mesh_barrel"]
+material = SubResource("Mat_head")
+top_radius = 0.07
+bottom_radius = 0.09
+height = 0.9
+radial_segments = 8
+
+[sub_resource type="StandardMaterial3D" id="Mat_core"]
+resource_name = "placeholder_turret_core"
+shading_mode = 0
+albedo_color = Color(1, 0.35, 0.2, 1)
+
+[sub_resource type="SphereMesh" id="Mesh_core"]
+material = SubResource("Mat_core")
+radius = 0.3
+height = 0.6
+radial_segments = 12
+rings = 6
+
+[sub_resource type="StandardMaterial3D" id="Mat_aim"]
+resource_name = "placeholder_turret_aim"
+transparency = 1
+blend_mode = 1
+shading_mode = 0
+albedo_color = Color(1, 0.15, 0.1, 0.8)
+
+[sub_resource type="BoxMesh" id="Mesh_aim"]
+material = SubResource("Mat_aim")
+size = Vector3(0.03, 0.03, 1)
+
+[node name="Turret" type="CharacterBody3D"]
+collision_layer = 4
+collision_mask = 7
+script = ExtResource("1_turret")
+definition = ExtResource("2_def")
+death_sound = ExtResource("4_death")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0)
+shape = SubResource("Shape_body")
+
+[node name="Visual" type="Node3D" parent="."]
+
+[node name="Body" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0)
+mesh = SubResource("Mesh_body")
+
+[node name="Head" type="Node3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4, 0)
+
+[node name="Box" type="MeshInstance3D" parent="Visual/Head"]
+mesh = SubResource("Mesh_head")
+
+[node name="Barrel" type="MeshInstance3D" parent="Visual/Head"]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 0, -0.75)
+mesh = SubResource("Mesh_barrel")
+
+[node name="Muzzle" type="Node3D" parent="Visual/Head"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1.25)
+
+[node name="Core" type="MeshInstance3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 0.15)
+mesh = SubResource("Mesh_core")
+
+[node name="AimPivot" type="Node3D" parent="."]
+top_level = true
+visible = false
+
+[node name="Line" type="MeshInstance3D" parent="AimPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.5)
+cast_shadow = 0
+mesh = SubResource("Mesh_aim")
+
+[node name="AttackSound" type="AudioStreamPlayer3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4, 0)
+stream = ExtResource("3_attack")
+unit_size = 10.0
